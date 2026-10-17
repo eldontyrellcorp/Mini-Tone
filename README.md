@@ -13,7 +13,7 @@ it changes:
   tracks 1..4, or 3..6 when track 5 or 6 is selected. Tracks 5 and 6 are saved with each project slot in an extension
   (flash 0xA0000..0xA9FFF); a project saved by Felucca loads with them at their power-on sound
 - **New engines**: SID (MOS 6581), CHIP (Elektron's SY CHIP), DUALVCO (Elektron's SY DUAL VCO), ANALOG4 (Elektron's Analog
-  Four), BRAIDS (Mutable Instruments' Braids: its 48 models), FMTONE (Digitone 2), WAVETONE (Digitone 2), FMDRUM (Digitone 2) 
+  Four), BRAIDS (Mutable Instruments' Braids: its 48 models), SWARMER (Digitone 2), FMTONE (Digitone 2), WAVETONE (Digitone 2), FMDRUM (Digitone 2) 
   and TB303 (Roland's TB-303); the engines ANALOG, PHASE, LOFI, SAMPLE, VOICE, TRIO, WHEEL, GRAIN, PHYS, NOISE and SLICE (and the user sample slots) are removed
 - **A ping-pong stereo delay** (MENU > AUDIO > PING PONG, DLY HALF: the line at half the sample rate for twice the time)
 - **The ELEK reverb** (FX > REVERB TYPE ELEK, pages ELEK REV and ELEK REV 2: PRE DEC FRQ GAIN HPF LPF VOL)
