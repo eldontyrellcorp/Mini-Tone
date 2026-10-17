@@ -3,27 +3,7 @@
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-blue.svg)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/Sponsor-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/hugelton)
 
-![Felucca 1.0](docs/felucca-1.0.png)
-
-**TL;DR:** Felucca 1.5 — an INSERT effect on every track, MIDI LEARN on the device, ANALOG's band-pass and high-pass, ENV SYNC, note lengths and per-step velocity, field testing. Connect your FM-1 to a computer by USB,
-open the [web installer](https://hugelton.github.io/Felucca/) in Chrome or Edge, and press Install;
-no extra hardware is needed. Installing is at your own risk: M-VAVE's updater or the installer's
-**Return to official V15** takes you back. Coming from 1.1.5.x? Read [⚠ Coming from 1.1.5](#-coming-from-115) first:
-projects saved by 1.4 or later do not open on 1.1.5.x. Going back from 1.5 to 1.4.1? Read
-[⚠ New in 1.5](#new-in-15) first: projects saved by 1.5 do not open on 1.2 to 1.4.1. Want to look around first?
-[Try it in your browser](https://hugelton.github.io/Felucca/webapp/try/), no FM-1 needed.
-
-Multi-engine synthesizer firmware for the M-VAVE FM-1. Please report what you find in
-[Issues](https://github.com/hugelton/Felucca/issues).
-
-- Install: [web installer](https://hugelton.github.io/Felucca/) (Chrome or Edge, USB), or `tools/fm1_install.py` from a terminal
-- Try: [Felucca in your browser](https://hugelton.github.io/Felucca/webapp/try/): the same firmware compiled to
-  WebAssembly, with the panel on screen (mouse, touch, computer keyboard, Web MIDI in)
-- Editor: [web editor](https://hugelton.github.io/Felucca/webapp/editor/); its development has moved to
-  [Felucca-WebApp](https://github.com/hugelton/Felucca-WebApp)
-- Build: [BUILDING.md](BUILDING.md)
-
-<a href="https://hugelton.itch.io/felucca"><img src="https://static.itch.io/images/badge-color.svg" alt="Available on itch.io" width="74"></a>
+![Mini-Tone 1.0.0](docs/felucca-1.0.png)
 
 ## Mini-Tone 1.0.0 (this firmware)
 
@@ -124,82 +104,6 @@ it changes:
   step grid, mixer, preset library, sample upload and recording with trim, the MENU settings; full backup and restore
   (everything but the FM6 voice bank: keep its .syx file);
   return to the official firmware; Felucca itself running in the browser
-
-## New in 1.5
-
-- **An INSERT effect on every track, with a dry / wet MIX** (Discussions #78, #177): FX → INSERT. KNOB 1 TYPE: SOFT,
-  HARD, FOLD, FUZZ (drives: DRIVE, TONE, LEVEL), CRUSH (BITS, RATE, LPF), PHASR, FLANG, CHOR (RATE, DEPTH, FDBK);
-  INSERT 2: MIX. It comes after DIST and before the SLICER, is part of the sound (user presets and projects keep it)
-  and works with automation and locks. TYPE OFF, the default, plays exactly as before.
-- **MIDI LEARN** (Discussion #170): on any page hold GLO and press D4 (MIDI LEARN ON), turn the FM-1 knob of a
-  parameter, then move a knob or fader on your controller: that CC now sets the parameter (the header says e.g.
-  "CC74 -> T1 CUT"). Turn the next knob and move the next control; OCT− clears the picked parameter's CC, OCT+ (or
-  GLO + D4 again) ends it. Up to 16 CCs, kept with the settings; **MENU > MIDI > LEARN CLEAR** (OCT+) clears them all.
-  Nothing changes for anyone who never learns.
-- **ANALOG's filter TYPE: LP, BP, HP** (Discussion #104): EDIT → FILTER, a page an ANALOG track has after EDIT 2:
-  KNOB 1 TYPE (LP the low-pass as before, BP band-pass, HP high-pass), KNOB 2–4 CUT, RES, KTR.
-- **ENV SYNC** (Discussion #175): ENV DEST's KNOB 4 (ESYNC) makes ENV's ATK, DEC and REL note values of the tempo
-  (1/64T to 4 bars, dotted and triplets) instead of milliseconds; they follow the tempo and an external clock.
-- **A note's length on the piano roll** (Discussions #178, #173): on SEQ → STEP, KNOB 3 on a note step is its **LEN**:
-  right ties the steps after it on, left takes them back. It stops before the next note ("NOTE AHEAD").
-- **Per-step velocity** (Discussion #173): SEQ → AUTOMATION, **+ ADD VEL** (OCT+: SHOW) lists every note step's
-  velocity, KNOB 4 sets it (1–127). Steps entered by hand play 96, steps recorded live keep how hard you played.
-- **HELP** (Discussion #156; MENU > SYSTEM > HELP, OFF by default): ON shows a short hint, key caps and a few words, in
-  the footer for about 2 s when a page opens, and under a quick layer's map while it shows.
-- **SAVE reaches PRESETS on its second tap** (#173): SAVE's pages go USER, PRESETS, PHRASES, PROJECT, TOOLS. The quick
-  save (SAVE, OCT+, OCT+) is unchanged.
-- **The FX layer's map alternates light and dark columns** (#173), so neighbouring effects are told apart at a glance.
-- **HOME LEVELS** (#134): MENU > DISPLAY > HOME has a third value, LEVELS: HOME shows the four tracks' rows and
-  KNOB 1–4 set the LEVEL of T1–T4.
-- ⚠ **SAMPLE's PIANO is the full piano again** (five notes, as in 1.0 to 1.1.5): sounds and projects made on 1.4 or
-  1.4.1 that use PIANO play the full piano. PIANO HD in a user slot is no longer needed.
-- Fixed: the arpeggiator follows TRN, ROOT, SCALE and QNT on held and latched notes (#191); MENU > DISPLAY > ANIM no
-  longer changes HOME.
-- ⚠ The INSERT, the filter TYPE and ENV SYNC are new sound parameters (OFF, LP, OFF by default): everything saved
-  before plays as before. But **a project saved by 1.5 does not open on 1.2 to 1.4.1**: its slot shows EMPTY there
-  (the data stays in flash until you save something into that slot there), and a backup that holds one is refused.
-  User presets saved by 1.5 load there without the new values. The full backup still does not include the FM6
-  voice bank.
-
-## New in 1.4.1
-
-- **Engine quick actions on the EDIT layer's black keys.** Hold EDIT: the black keys do what the selected track's
-  engine offers, and the map shows it. On a DRUM track, black keys 1–8 (F#3 … A#4) mute its lanes KICK, SNARE, CLAP,
-  HATCL, HATOP, TOM, RIM and BELL, one press to mute, the next to unmute. The LEDs show which lanes sound, the drum
-  grid dims a muted lane. A muted lane keeps playing unheard, so unmuting brings it back in time. The mutes are for
-  live play: never saved, not recorded, not undone; a sound or project load clears them, OCT− in the layer puts them
-  back as they were when it opened. Other engines have no quick actions yet.
-- **FM6 voice bank** (Discussion #168). The web editor's 6-OP FM tab sends a whole 32-voice SysEx bank (the standard
-  4096-byte file) to the FM-1 in one go, with its name. On an FM6 track SLOT (EDIT 2, KNOB 4) now goes F1–F8, OWN,
-  then **B1–B32**, the bank's voices; the algorithm chart shows the voice's name. Picking a voice copies it into the
-  track, as F1–F8 do, so a project or user preset saved with it keeps that sound after you send another bank (it
-  loads with SLOT OWN). With no bank sent, SLOT stops at OWN as before. The bank has its own flash sector and is only
-  replaced once a new one arrived whole; projects, presets, samples and settings are not touched. **The full backup
-  does not include the bank: keep the .syx file.**
-- 1.4.1 opens and saves everything 1.4 does, in the same formats.
-
-## ⚠ Coming from 1.1.5
-
-1.4 is the first release since 1.1.5.1 and holds a lot (all of this holds for 1.4.1 and 1.5 too). Everything you saved loads and sounds as before, except
-where marked here:
-
-- **Projects are saved in a new format (FUN10).** 1.4 opens every older project, but **1.1.5.x and older cannot
-  open a project saved by 1.4 or later**: they show its slot as empty (the data stays in flash until you save something into
-  that slot there), and refuse a backup that holds one. User presets saved by 1.4 load on 1.1.5.x without the five
-  new values (LFO 2's SYNC, TRIG and POL, QUANTIZE, SPREAD).
-- **ARP ORD now plays the held notes in the order you pressed them** (up to 1.1.5 it played them as UP): a sound
-  or project using ORD sounds different when its notes were pressed in another order than low to high.
-- **SAMPLE's PIANO** was a lighter lo-fi piano in 1.4 and 1.4.1; since 1.5 it is the full piano of 1.1.5 again.
-- **The pages moved** (Discussion #153): see Controls below. In short: SEQ is STEP and AUTOMATION; **SEQ held is SEQ
-  TOOLS on every page** (it no longer opens SONG); **GLO opens SONG**; PHRASES is on SAVE; HOME goes round HOME,
-  MIXER and CLOCK (BPM, swing, clock source); TUNE is MENU > AUDIO, MIDI IN (ROUT) is MENU > MIDI, and the USB state
-  and CPU load are MENU > SYSTEM > INFO. REC held is the REC layer as before.
-- **SONG has a lane per track**: older songs load with all four tracks on each row's slot and play as before; its
-  knobs are KNOB 1 SECTION, 2 TRACK, 3 PAT, 4 REPS, and on SONG the white keys A3 B3 C4 D4 set the slot.
-- **A fresh start uses the HALL reverb** (up to 1.1.5: ROOM). Saved projects keep their reverb TYPE.
-- **BASS+ (MENU > SPEAKER EQ) is softer:** its added harmonics are at half the level, so a full-scale kick no longer
-  distorts (#180).
-- **The web editor** needs its update for the new features; use the one on the site.
 
 ## Controls
 
@@ -371,24 +275,6 @@ loads with its values and plays silence):
   round kick, bright snare, noise hats, a conga), **55** (dropping kick, high metal hats, a metal bell)
   and **77** (swelling kick, multi-burst claps, claves, a cymbal). All of them are synthesized by
   Felucca, no samples. EDIT > LANES and LANES 2 set each lane's level
-
-The DIGITAL engine of 0.9 has been replaced by FM6: projects and presets with DIGITAL sounds load
-as FM6 sounds converted from them. The SAMPLE engine's PERC kit was removed in 1.0.2: sounds and
-projects that used it load as the DRUM engine's kit, on the same key map. FM6's patch bank (the B
-slots) was removed in 1.0.3: user presets keep their own FM6 patch, and presets that used a B slot get
-that patch on the first start of 1.0.3. 1.4.1 brings B slots back as a voice bank sent from the web editor
-(B1–B32): a voice picked from it becomes the track's own patch, so nothing saved depends on the bank. SLICE gained a second built-in sound in 1.0.4, PIANO (the SAMPLE
-engine's middle C as it was then), next to BREAK. Since 1.0.4 a missing sample (an empty user slot, or a set missing
-from the build) plays a plain sine at the note's pitch on SAMPLE, GRAIN and SLICE, and the screen says
-NO SAMPLE once. DRUM's KIT variants HAND, CYM and H+CYM were retired in 1.0.5: sounds and projects that
-used them play the 66, 10 and 77 kits. SAMPLE's PIANO was a lo-fi piano in 1.4 and 1.4.1 (the full one installed into a user slot from the web editor as
-PIANO HD); 1.5 brings the full piano back.
-
-**SLICER** (FX page, every track): a tempo-synced 16-step gate or stutter, with 16 patterns.
-
-**Reverb** (FX > REVERB, TYPE): **HALL** (since 1.4, the default on a fresh start: eight delay lines feeding each
-other with slowly drifting taps, stereo, SIZE the decay up to about 4.5 s, DAMP how fast the highs die), **ROOM** (the
-default up to 1.1.5) and **SPRING**. A project plays the TYPE it was saved with.
 
 ## Scale keyboard
 
