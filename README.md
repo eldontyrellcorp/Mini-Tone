@@ -3,7 +3,7 @@
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-blue.svg)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/Sponsor-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/hugelton)
 
-## Mini-Tone 1.0.0 (this firmware)
+## Mini-Tone 1.0.0
 
 Mini-Tone is Stephane Schmitz's firmware, based on Felucca 1.5 by Leo Kuroshita (Hügelton Instruments), GPL-3.0-only. What
 it changes:
