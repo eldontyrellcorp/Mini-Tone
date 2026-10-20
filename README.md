@@ -12,7 +12,7 @@ it changes:
   TRACKS and LEVELS, the GLO layer's levels, solos and mutes and the FX layer's mutes follow a window of four tracks,
   tracks 1..4, or 3..6 when track 5 or 6 is selected. Tracks 5 and 6 are saved with each project slot in an extension
   (flash 0xA0000..0xA9FFF); a project saved by Felucca loads with them at their power-on sound
-- **New engines**: SID (MOS 6581), CHIP (Elektron's SY CHIP), DUALVCO (Elektron's SY DUAL VCO), ANALOG4 (Elektron's Analog
+- **New engines**: SID (MOS 6581 / 8580, after reSID), CHIP (Elektron's SY CHIP), DUALVCO (Elektron's SY DUAL VCO), ANALOG4 (Elektron's Analog
   Four), BRAIDS (Mutable Instruments' Braids: its 48 models), SWARMER (Digitone 2), FMTONE (Digitone 2), WAVETONE (Digitone 2), FMDRUM (Digitone 2) 
   and TB303 (Roland's TB-303); the engines ANALOG, PHASE, LOFI, SAMPLE, VOICE, TRIO, WHEEL, GRAIN, PHYS, NOISE and SLICE (and the user sample slots) are removed
 - **A ping-pong stereo delay** (MENU > AUDIO > PING PONG, DLY HALF: the line at half the sample rate for twice the time)
@@ -243,9 +243,11 @@ loads with its values and plays silence):
   the algorithms, the waves, the fold, the ratio scale and the samples. It has no key in the EDIT layer: pick it with KNOB 1
   ENG, the PRESETS ENG knob or the editor. Its presets cannot be starred, and a project or a user preset using it does not
   load on firmware without it
-- **SID**: a voice in the manner of the MOS 6581 (Commodore 64): TRI SAW PULSE NOISE and their combinations (the
-  bitwise AND of the chip's waveform DAC), PULSE width, SYNC and RING MOD with a modulator RATIO, and the chip's multimode
-  filter (LP BP HP and the sums, 4-bit resonance, drive). The noise is the chip's 23-bit shift register. Three voices a track
+- **SID**: reSID's MOS 6581 / 8580 voice (Dag Lem's reSID 0.16, ported to integer C): TRI SAW PULSE NOISE and their combinations
+  (TRI+SAW, TRI+PUL, SAW+PUL, T+S+P are the combined waveforms measured from real chips, not an AND), PULSE width, SYNC and
+  RING MOD with a modulator RATIO, the chip's multimode filter (LP BP HP and the sums, 4-bit resonance, its FC curve across CUT)
+  and MODEL 6581 or 8580 (waveform tables, filter curve, character). The noise is the chip's 23-bit shift register. The
+  amplitude is the track's ADSR (no chip envelope). Three voices a track; 26 presets, among them the same patch on both chips
 - **CHIP**: after Elektron's SY CHIP machine: a WAVE axis of 120 waves (static, animated, tables, pulse 1..99 %), an
   arpeggiator of up to four notes (OF2 OF3 OF4, SPD in note divisions, Hz or single-shot) that makes chords and drums the way
   the 80s home computers did, DEC and OVER. Four voices a track

@@ -5,7 +5,7 @@ drum_render 89
 fm6_render 363
 fm6_op_run 72
 fm6_op_fb 26
-sid_render 390
+sid_render 314
 chip_render 206
 dual_render 6428
 dv_metal_run 26

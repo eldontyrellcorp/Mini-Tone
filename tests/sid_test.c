@@ -31,6 +31,7 @@ static void setup(const int16_t *e)
     trk[0].p[P_REL] = 10;
     trk[0].p[P_VOICE] = V_POLY;
     trk[0].p[P_CHOR] = trk[0].p[P_DLY] = trk[0].p[P_REV] = 0;
+    trk[0].p[P_ED_FLT] = trk[0].p[P_LD_FLT] = 0;      /* (a preset's ENV -> FILTER would move the cutoff) */
 }
 static void render(const int16_t *e, uint32_t note, double *y, uint32_t n)
 {
@@ -72,6 +73,15 @@ static void fft(double *re, double *im, uint32_t n)
                 re[i + j] += xr, im[i + j] += xi;
             }
     }
+}
+static double harm(const double *ps, double hz, uint32_t k)      /* the line of the k-th harmonic of hz, dB */
+{
+    uint32_t c = (uint32_t)(k * hz * N / FS + 0.5), i;
+    double m = 0;
+    for (i = c - 2; i <= c + 2; i++)
+        if (ps[i] > m)
+            m = ps[i];
+    return 10 * log10(m + 1e-30);
 }
 static void spec(const double *y, double *ps)
 {
@@ -198,6 +208,70 @@ int main(void)
             }
     printf("sid: worst corner peak %.2f (ANALOG at RES 127: 1.69)\n", worst);
     check("every WAVE x MOD x MODE x CUT x RES x DRV stays within ANALOG's worst peak (1.7 of full scale)", ok);
+
+    {                                                          /* the waveform generator against reSID's own numbers */
+        static const struct { uint8_t model, mask; uint16_t pw; uint32_t acc, out; } ref[] = {
+            {0, 4, 1500, 0x650cb2, 0xfff}, {0, 4, 1500, 0x80490f, 0xfff}, {0, 5, 1500, 0x80490f, 0xff0},
+            {1, 3, 1500, 0xed3a83, 0x800}, {1, 4, 1500, 0x650cb2, 0xfff}, {1, 4, 1500, 0x80490f, 0xfff},
+            {1, 5, 1500, 0x650cb2, 0x800}, {1, 5, 1500, 0x80490f, 0xff0}, {1, 6, 1500, 0xb6c1c9, 0x800},
+            {1, 6, 1500, 0xd1fe26, 0xc00}, {1, 7, 1500, 0xed3a83, 0x800}};
+        uint32_t bad_w = 0;
+        for (i = 0; i < NELEM(ref); i++)
+            bad_w += sid_w12(ref[i].mask, ref[i].acc << 8, 0, ref[i].pw, 0, 0, SID_WAVE[ref[i].model]) != ref[i].out;
+        bad_w += sid_w12(1, 0x234567u << 8, 0x800000u << 8, 0, 1, 0, SID_WAVE[0]) != 0xb97u;      /* RING: the MSBs XORed */
+        bad_w += sid_w12(8, 0, 0, 0, 0, SID_LFSR_INIT, SID_WAVE[0]) != 0xfe0u;                    /* the register's reset value */
+        bad_w += sid_w12(8, 0, 0, 0, 0, 0x2a5b3c, SID_WAVE[0]) != 0x0b0u;
+        check("the waveform generator gives reSID's 12-bit outputs (combined waves of both chips, RING, noise)", !bad_w);
+    }
+    {                                                          /* the filter against reSID's: the harmonics of a saw at C3 */
+        static const struct { uint8_t wave, cut, res, mode, model; int8_t db[4]; const char *what; } ref[] = {
+            {1, 20, 0, 1, 0, {-8, -24, -41, -59}, "LP 6581 FC 322"},
+            {1, 20, 0, 1, 1, {-5, -12, -17, -26}, "LP 8580 FC 322"},
+            {1, 31, 120, 2, 0, {3, -2, -16, -29}, "BP 6581 FC 500, RES 15"},
+            {1, 20, 0, 4, 0, {4, 0, -5, -11}, "HP 6581 FC 322"},
+            {1, 20, 64, 4, 0, {7, 0, -6, -13}, "HP 6581 FC 322, RES 8"}};
+        uint32_t r;
+        for (r = 0; r < NELEM(ref); r++) {                     /* 2nd, 4th, 8th and 16th harmonic against the 1st, +-3 dB */
+            int16_t c[8] = {1, 0, 0, 0, ref[r].mode, ref[r].cut, ref[r].res, ref[r].model};
+            double h1, d, f0 = hz_of(48);
+            uint32_t k, ok = 1;
+            (void)ref[r].wave;
+            render(c, 48, y, N);
+            spec(y, ps);
+            h1 = harm(ps, f0, 1);
+            for (k = 0; k < 4; k++) {
+                d = harm(ps, f0, 2u << k) - h1;
+                if (fabs(d - ref[r].db[k]) > 3.0)
+                    ok = 0;
+                printf("sid: %s: harmonic %u %+.1f dB (reSID %+d)\n", ref[r].what, 2u << k, d, ref[r].db[k]);
+            }
+            check("the filter rolls off as reSID's does (+-3 dB)", ok);
+        }
+    }
+    {                                                          /* the two chips differ: the 6581's SAW+TRI is nearly silent */
+        int16_t a[8] = {4, 64, 0, 0, 0, 0, 0, 0}, b[8] = {4, 64, 0, 0, 0, 0, 0, 1};
+        double ea = 0, eb = 0;
+        render(a, 48, y, N);
+        for (i = 0; i < N; i++)
+            ea += y[i] * y[i];
+        render(b, 48, y, N);
+        for (i = 0; i < N; i++)
+            eb += y[i] * y[i];
+        printf("sid: TRI+SAW energy: 6581 %.4g, 8580 %.4g\n", ea / N, eb / N);
+        check("MODEL: the 8580's TRI+SAW is far louder than the 6581's (reSID's tables: 6.4x in level)", eb > ea * 10);
+    }
+    {                                                          /* SYNC restarts the oscillator at the modulator's MSB: no drift */
+        int16_t c[8] = {1, 64, 1, 12, 0, 90, 0, 0};
+        double f1, f2;
+        render(c, 45, y, N);
+        spec(y, ps);
+        f1 = peak_hz(ps);
+        render(c, 46, y, N);
+        spec(y, ps);
+        f2 = peak_hz(ps);
+        printf("sid: SYNC +12 st: A2 peak %.1f Hz, A#2 peak %.1f Hz\n", f1, f2);
+        check("SYNC follows the modulator's pitch up a semitone (ratio 1.0595 +-0.3 %)", fabs(f2 / f1 - 1.0595) < 0.003);
+    }
 
     {                                                          /* determinism */
         static double y2[2048];

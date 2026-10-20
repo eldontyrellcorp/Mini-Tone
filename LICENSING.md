@@ -16,10 +16,11 @@ Every file in this tree that carries an `SPDX-License-Identifier: GPL-3.0-only` 
 - the web pages (installer, editor, the browser emulator `web/emu/`) and their tests: `web/` (not the Fukiai and DotGothic16 fonts, below)
 - the host tests: `tests/`
 
-Five source files are ports and keep the licence of their originals:
+Some source files are ports and keep the licence of their originals:
 `firmware/src/phys_dsp.c` (DaisySP, MIT), `firmware/src/phys_symp.c` (Rings, MIT),
-`firmware/src/fm6_core.c` (msfa, Apache-2.0), and `firmware/src/braids_osc.c` with its tables
-`firmware/src/braids_tab.c` (Braids, MIT). The firmware built with them is GPL-3.0-only as
+`firmware/src/fm6_core.c` (msfa, Apache-2.0), `firmware/src/braids_osc.c` with its tables
+`firmware/src/braids_tab.c` (Braids, MIT), and `firmware/src/eng_sid.c` with its tables
+`firmware/src/sid_tab.h` (reSID, GPL-2.0-or-later). The firmware built with them is GPL-3.0-only as
 a whole.
 
 You may use, study, change and share Felucca under the GPL. If you distribute Felucca, or
@@ -52,6 +53,7 @@ All by Hügelton Instruments (Leo Kuroshita), in this tree:
 | klattsch by Tony Gies (<https://github.com/tgies/klattsch>): design reference for the VOICE engine; no code copied. Formant data from Klatt (1980) / Hillenbrand et al. (1995) | MIT (klattsch) | credit only |
 | X0X by charlesvestal (<https://github.com/charlesvestal/fm1-x0x>), a Felucca fork: the design of the browser emulator (the worklet, the device clock driven by its audio, the exports); its files credit it in their headers | GPL-3.0 | `web/emu/` |
 | DotGothic16 font by The DotGothic16 Project Authors (<https://github.com/fontworks-fonts/DotGothic16>): the browser emulator's knob labels, served with its page (cut to printable ASCII; the font declares no Reserved Font Name) | SIL OFL 1.1 | `web/emu/fonts/DotGothic16-subset.woff`, `LICENSES/OFL-DotGothic16.txt` (also `web/emu/fonts/OFL.txt`) |
+| reSID 0.16 by Dag Lem (<https://github.com/simonowen/resid>, Simon Owen's fork): the SID engine's waveform generator and filter, ported to integer C, and the tables sampled from real MOS 6581 / 8580 chips (combined waveforms, filter cutoff curves), generated into `firmware/src/sid_tab.h` by `tools/gen_sid_tab.py`. reSID's "GPL-2.0-or-later" lets the firmware as a whole stay GPL-3.0-only; `tests/sid_test.c` checks the port against numbers measured with the original | GPL-2.0-or-later | `firmware/src/eng_sid.c`, `firmware/src/sid_tab.h`, `tools/gen_sid_tab.py`, `LICENSES/GPL-2.0-reSID.txt` |
 | JieLi AC79 SDK by JieLi Technology: three of its files go into every `.fwsc` package (below); none are in this tree | Apache-2.0 | `LICENSES/Apache-2.0.txt` |
 
 On the device, HOME held > ABOUT opens the information screen; turning PRESETS scrolls on into
