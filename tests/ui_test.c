@@ -4773,6 +4773,49 @@ static int test_fm6_charts(void)
            check("FM6 charts: carriers on the bottom row, modulators a row up, one per cell, at most 4 rows", layout);
 }
 
+#if FELUCCA_FMTONE
+/* FMTONE's algorithm charts (ui_graph.c graph_fmt: FM_CELL, FM_MOD, FMT_CAR) against the eight algorithms of src/eng_fmtone.c written out
+ * here as "source>destination" routes on 1 C, 2 A, 3 B1, 4 B2 (from its render switch: alg 1 B2 > B1 > A > C, 2 (B1 + B2) > A > C,
+ * 3 B1 > A > C and B2 > C, 4 B2 > B1 and (A + B1) > C, 5 B2 > B1 and A > C with C and B1 out, 6 B2 > C A B1 all out, 7 B2 > B1
+ * with C A B1 out, 8 all out) and the carriers; B2 has the feedback. The carriers other than C exist from algorithm 5 on: what
+ * tests/fmtone_test.c proves with MIX (nothing changes in 1..4, bit for bit). The layout as FM6's: the carriers on the bottom
+ * row and only they, a modulator a row above everything it modulates, one operator per cell, every operator heard. */
+static int test_fmtone_charts(void)
+{
+    static const struct { const char *r, *car; } ALGS[8] = {
+        {"2>1 3>2 4>3", "1"}, {"2>1 3>2 4>2", "1"}, {"2>1 3>2 4>1", "1"}, {"2>1 3>1 4>3", "1"},
+        {"2>1 4>3", "13"}, {"4>1 4>2 4>3", "123"}, {"4>3", "123"}, {"", "1234"}};
+    uint32_t a, k, j, routes = 1, layout = 1, mix = 1;
+    for (a = 0; a < 8u; a++) {
+        uint8_t m[4] = {0, 0, 0, 0}, want[4] = {0, 0, 0, 0};
+        uint32_t car = 0, ok = 1;
+        const char *s;
+        for (s = ALGS[a].r; *s; s++)
+            if (*s == '>') want[s[1] - '1'] |= (uint8_t)(1u << (s[-1] - '1'));
+        for (s = ALGS[a].car; *s; s++) car |= 1u << (*s - '1');
+        for (k = 0; k < 4u; k++) m[k] = (uint8_t)((FM_MOD[a] >> (4u * k)) & 15u);
+        if (memcmp(m, want, 4) || FMT_CAR[a] != car) {
+            printf("ui: FMTONE algorithm %u: the chart's routes or carriers differ from the written ones\n", a + 1u);
+            routes = 0;
+        }
+        mix &= (FMT_CAR[a] != 1u) == (a >= 4u);                 /* more carriers than C: from 5 on (fmtone_test: MIX) */
+        for (k = 0; k < 4u; k++) {
+            uint32_t row = FM_CELL[a][k] >> 4, outs = 0;
+            if ((row == 0u) != ((car >> k) & 1u) || (FM_CELL[a][k] & 0x0Fu) > 6u || row > 3u) ok = 0;
+            for (j = 0; j < 4u; j++) {
+                if (j != k && FM_CELL[a][j] == FM_CELL[a][k]) ok = 0;
+                if (m[j] >> k & 1u) { outs++; if (FM_CELL[a][k] >> 4 != (FM_CELL[a][j] >> 4) + 1u) ok = 0; }
+            }
+            if (!outs && !((car >> k) & 1u)) ok = 0;           /* every operator heard */
+        }
+        if (!ok) { printf("ui: FMTONE algorithm %u: the chart's layout is off\n", a + 1u); layout = 0; }
+    }
+    return check("FMTONE charts: the 8 algorithms' routes and carriers are eng_fmtone.c's (C A B1 B2), more carriers than C from algorithm 5",
+                 routes && mix) +
+           check("FMTONE charts: carriers on the bottom row, modulators a row up, one per cell", layout);
+}
+#endif
+
 #if !FELUCCA_FM4
 /* DIGITAL retired (src/fm4_convert.c): engine 1 is on no track and in no list; its sounds arrive as FM6 with a patch
  * of their own: a user preset of it, its preset numbers (set_engine_of / apply_preset_to), a track that got engine 1
@@ -9420,6 +9463,9 @@ int main(void)
     bad += test_idle_leds();
     bad += test_momentary();
     bad += test_fm6_charts();
+#if FELUCCA_FMTONE
+    bad += test_fmtone_charts();
+#endif
     bad += test_fm6_ops();
     bad += test_home_tracks();
     bad += test_fx_map_columns();

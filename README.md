@@ -232,6 +232,8 @@ loads with its values and plays silence):
   tracking of the modulation, 127 = none left at C8) and FINE (FTO A, B1, B2: -64..63 cents). At most 6 voices a track.
   Its presets cannot be starred, and a project or a user preset using it does not load on firmware without it. Not
   Elektron's: the algorithms, the HARM morph (a self-modulation, not additive), the trigged-only envelopes
+  EDIT 1 and EDIT 2 draw the **algorithm as a chart** (as FM6's): C A B1 B2 in boxes, the modulators above what they modulate, the carriers
+  over the output bus, B2's feedback loop; a group at LEV 0 goes dim, and the operators the knob you just turned affects light up
 - **WAVETONE**: two wavetable oscillators after the structure of Elektron's WAVETONE machine. EDIT 1 / 2 (OSC 1, OSC 2): WAV
   (a position morphing through eight frames), PD (phase distortion, the Casio CZ's warp), LEV and TUN (-24..24 semitones) of
   each. INTERACT: INTR (OFF, SYNC, RING, FM: osc 1 into osc 2's phase), TABL (PRIM: sine, triangle, square, saw, pulses; HARM:

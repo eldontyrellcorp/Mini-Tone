@@ -1590,7 +1590,7 @@ static void sweep_columns(void)
                     draw_columns();
                     lint();
                     nsweep++;
-                    if (d->max - d->min > 300 && v - d->min >= 40)      /* very wide (the delay's TIME, 1502 values: the note values,
+                    if (d->max - d->min > 300 && v - d->min >= 40 && v < d->max - 1)      /* very wide (the delay's TIME, 1502 values: the note values,
                                                                          * then ms): every 37th after the first 40, and the ends */
                         v = v + 36 > d->max ? d->max - 1 : v + 36;
                 }
@@ -2168,6 +2168,22 @@ int main(int argc, char **argv)
             mono_check();
         }
         if (fmp_charts - c0 != 32u) { fprintf(stderr, "ui_render: %u FM6 charts drawn of 32\n", fmp_charts - c0); return 1; }
+    }
+    {   /* FMTONE's eight charts on EDIT 1 (ui_graph.c graph_fmt; the same lint, fmp_check), and on EDIT 2, in GREY: gray */
+        uint32_t a, w, c0 = fmp_charts;
+        for (w = 0; w < 2u; w++)
+            for (a = 0; a < 8u; a++) {
+                char name[32];
+                snprintf(name, sizeof name, "FMTONE ALGO %u EDIT %u", a + 1u, w + 1u);
+                cur_name = name;
+                state(); pal(UI_GREY_INDEX); eng(ENGI_FMTONE); TSEL->p[P_E0] = (int16_t)a; go_title(w ? "EDIT 2" : "EDIT 1");
+                draw(-1);
+                lint();
+                mono_check();
+                snprintf(name, sizeof name, "fmtone_algo%u_edit%u", a + 1u, w + 1u);
+                write_ppm(out, "GREY", name);
+            }
+        if (fmp_charts - c0 != 16u) { fprintf(stderr, "ui_render: %u FMTONE charts drawn of 16\n", fmp_charts - c0); return 1; }
     }
     {   /* every FM6 chart again on OPERATOR, each operator picked in turn, its frequency at its widest ("x61.69", every
          * operator FIXED: "9.77 KHZ") top right: the same chart lint (the text is part of the label's net), in GREY */

@@ -70,9 +70,19 @@ static struct {
     uint16_t comb_i[4], ap_i[2];
     int32_t comb_lp[4];
 } rf;
+static uint32_t rf_cur, rf_init;                  /* the delay time now, Q8: it glides to TIME at 8 samples a block (fx.c fx_buses; the one change to the buses) */
 static void ref_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t *rev_in, int32_t *wet, uint32_t n)
 {
-    uint32_t i, k, dl = delay_samples();
+    uint32_t i, k, dl, dlf, tgt = delay_samples() << 8;
+    if (!rf_init) {
+        rf_cur = tgt;
+        rf_init = 1;
+    } else {
+        int32_t d = (int32_t)tgt - (int32_t)rf_cur;
+        rf_cur = (uint32_t)((int32_t)rf_cur + (d < -(8 << 8) ? -(8 << 8) : d > (8 << 8) ? (8 << 8) : d));
+    }
+    dl = rf_cur >> 8;
+    dlf = rf_cur & 255u;
     int32_t fb = song.g[G_DFDBK] * 230, col = 2000 + song.g[G_DCOLOR] * 240;
     int32_t dmix = song.g[G_DMIX] * 258;
     int32_t size = 25000 + song.g[G_RSIZE] * 50, damp = 32767 - song.g[G_RDAMP] * 200;
@@ -91,6 +101,10 @@ static void ref_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_
         }
         rf.cho_w++;
         x = ref_dly[(rf.dly_w - dl) & (DLY_LEN - 1u)];
+        if (dlf) {                                      /* between two samples while the time glides */
+            int32_t x1 = ref_dly[(rf.dly_w - dl - 1u) & (DLY_LEN - 1u)];
+            x += ((x1 - x) * (int32_t)dlf) >> 8;
+        }
         rf.dly_lp += mulq15(x - rf.dly_lp, col);
         ref_dly[rf.dly_w & (DLY_LEN - 1u)] = (int16_t)clamp((dly_in[i] >> 1) + mulq15(rf.dly_lp, fb), -32768, 32767);
         rf.dly_w++;
@@ -150,7 +164,7 @@ static void test_room_identical(void)
         for (i = 0; i < CTL; i++)
             diff += w0[i] != w1[i];
     }
-    check("ROOM: the buses bit for bit as before SPRING (30 s of noise sends, settings changing)", !diff && !fx.rtype);
+    check("ROOM: the buses bit for bit as before SPRING (30 s of noise sends, settings changing; the delay time gliding)", !diff && !fx.rtype);
 }
 
 /* ------------------------------------------------------------- SPRING --- */
