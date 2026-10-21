@@ -108,6 +108,9 @@ static void host_preset_values(track_t *t, uint32_t e, uint32_t pi, const preset
     wvt_track_loaded(t);                          /* WAVETONE: the preset's slots */
     fdr_track_loaded(t);                          /* FMDRUM: the preset's slots */
     a4_track_loaded(t);                           /* ANALOG4: the preset's slots */
+    swm_track_loaded(t);                          /* SWARM, CHIP, DUALVCO: the preset's filter */
+    chip_track_loaded(t);
+    dual_track_loaded(t);
 }
 static void host_preset_req(track_t *t, uint32_t e, uint32_t pi)
 {

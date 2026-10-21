@@ -3,7 +3,8 @@
 /* Host test of 1.5's sound items (Discussions #104, #175), same sources as the firmware (hostsim.c):
  *   build/host/sound15_test [DEMO_DIR]      (run_tests.sh builds and runs it; demos in build/sound15_demo/)
  * 1. the filter TYPE (P_FTYPE): the parameter (LP BP HP, default LP, not recordable, on EDIT > FILTER) is kept for the
- *    stored data; ANALOG, the one engine that read it, is gone: every engine that sounds ignores it (bit for bit).
+ *    stored data; ANALOG, the first engine that read it, is gone: ANALOG4 and the engines with the resonant filter (SWARM,
+ *    FMTONE, WAVETONE, CHIP, DUALVCO: dsp.c rsvf) read it, every other engine that sounds ignores it (bit for bit).
  * 2. ENV SYNC (P_ESYNC, voice.c esync_coef): the parameter (OFF / ON, default OFF, not recordable, ENV DEST's KNOB 4);
  *    OFF takes the tables whatever esync_k holds (bit for bit); ON: ATK DEC REL show note values (1/64T .. 4BAR, 25
  *    names over 0..127, a knob detent each), and the attack reaches the top, the decay and the release -40 dB, after
@@ -200,7 +201,7 @@ static void test_filter(void)
     {
         uint32_t i, k = 0;
         for (i = 0; i < NPAGES; i++)
-            if (str_eq(PAGES[i].title, "FILTER"))
+            if (str_eq(PAGES[i].title, "FILTER") && !PAGES[i].own)     /* (ANALOG's: SWARM FMTONE WAVETONE CHIP DUALVCO have their own) */
                 k = i + 1u;
         check("EDIT > FILTER: TYPE CUT RES KTR (ANALOG's), after EDIT 2",
               k && PAGES[k - 1u].fam == FAM_EDIT && PAGES[k - 1u].id[0] == P_FTYPE && PAGES[k - 1u].id[1] == P_E4 &&
@@ -208,11 +209,12 @@ static void test_filter(void)
     }
     /* ANALOG, the engine that read TYPE, is gone: ANALOG4 reads it (filter 1), every other engine that sounds ignores it */
     for (e = 1; e < NENGINES; e++) {
-        if (!ENGINES[e]->npresets || e == ENGI_ANA4)      /* (ANALOG4's filter 1 reads it) */
-            continue;
+        if (!ENGINES[e]->npresets || e == ENGI_ANA4 || e == 14 || e == 15 || e == 16 || e == 19 || e == 20)
+            continue;                                     /* (the engines with the resonant filter read it: ANALOG4, SWARM, FMTONE,
+                                                           * WAVETONE, CHIP, DUALVCO; tests/rsvf_test.c) */
         same &= phrase_child(e, 0, 0) == phrase_child(e, 0, type_hp);
     }
-    check("TYPE BP / HP on every other engine than ANALOG4: its phrase bit for bit", same);
+    check("TYPE BP / HP on every engine without the resonant filter: its phrase bit for bit", same);
 }
 
 /* ------------------------------------------------------------------ 2 --- */

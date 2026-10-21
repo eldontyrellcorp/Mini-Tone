@@ -85,7 +85,8 @@
 /* ------------------------------------------------------- parameters --- */
 enum {
     F_INT, F_PCT, F_BIPCT, F_TIME, F_LFOHZ, F_CUTOFF, F_DB, F_SEMI, F_ENUM, F_BPM, F_NOTE,
-    F_ONOFF, F_OCT, F_STEPS, F_REVDEC      /* F_REVDEC: the ELEK reverb's decay: a time, 127 = INF */
+    F_ONOFF, F_OCT, F_STEPS, F_REVDEC,     /* F_REVDEC: the ELEK reverb's decay: a time, 127 = INF */
+    F_DTIME                                /* F_DTIME: the delay's TIME (params.c N_DTIME): a note value, dotted or not, or milliseconds */
 };
 
 typedef struct {
@@ -432,6 +433,8 @@ typedef struct track {
     /* engine switch (voice.c engine_block): the old engine's voices fade out, then it switches */
     uint8_t xf_on, xf;           /* fading; blocks of the fade still to render */
     int16_t pe_old[8];           /* P_E0..P_E7 of the sounding engine: the fade renders with these */
+    int16_t ps_old[24];          /* (21 used, 24 keeps track_t a multiple of 16 bytes) the same for its operator slots P_FM1_ATK .. P_FM4_LEVEL and P_FTYPE (the filter's CUT, RES, KEY
+                                  * and TYPE are slots: a fade must not read the next engine's) */
     uint8_t xp_n, xp_note[4], xp_vel[4];   /* note-ons during the fade, played on the new engine */
     /* modulation matrix (mod.c): MIDI performance controllers of the track's channel, 0..127 */
     uint8_t mw, at;              /* CC1 mod wheel, channel aftertouch */

@@ -62,6 +62,19 @@ def main(path):
     L += arr("CUTOFF_HZ", "uint16_t", [int(round(f)) for f in fc])
     # trapezoidal (Simper) SVF: g = tan(pi fc / FS), Q12; stable at any cutoff/resonance
     L += arr("SVF_G", "uint16_t", [int(4096 * math.tan(math.pi * min(f, 0.45 * FS) / FS)) for f in fc])
+    # the same cutoffs as g = tan(pi f / FS) in Q24, 128 points and the one above the last (dsp.c rsvf: low cutoffs need the
+    # precision, g is 0.002 at 30 Hz)
+    fc2 = fc + [fc[-1] * (16000 / 30) ** (1 / 127)]
+    L += arr("RSVF_G", "uint32_t", [int((1 << 24) * math.tan(math.pi * min(f, 0.45 * FS) / FS)) for f in fc2], 8)
+    # resonance of the self-oscillating SVF (dsp.c rsvf): damping k = 1 / Q in Q12, signed. Q 0.5 .. 32 over RES 0..112
+    # (exponential: the same musical step at every setting), then k falls through 0 (RES 117: the filter rings on its
+    # own) to -0.063 at 127: the more regeneration, the better the ring holds against a loud input, and the saturation of the
+    # filter's state bounds it
+    res_k = []
+    for r in range(128):
+        k = 1.0 / (0.5 * 2 ** (r * 6 / 112)) if r <= 112 else 1 / 32 - (r - 112) * 0.0063
+        res_k.append(int(round(k * 4096)))
+    L += arr("RES_K", "int16_t", res_k)
     # level: 0 = off, else dB = (v - 112) / 2  (112 = 0 dB, 127 = +7.5 dB)
     db = [None] + [(v - 112) / 2 for v in range(1, 128)]
     L += arr("LEVEL_Q12", "uint16_t", [0] + [int(round(4096 * 10 ** (d / 20))) for d in db[1:]])

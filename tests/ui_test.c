@@ -3511,7 +3511,7 @@ static int engine_cycle(const char *const *want, uint32_t n)   /* EDIT tapped fr
 }
 static int test_edit_cycle(void)
 {
-    static const char *const CYC_A[] = {"EDIT 1", "EDIT 2", "VOICE", "VOICE 2", "VOICE 3", "EDIT 1"};   /* (SWARM: no extra pages; ANALOG's FILTER went with it) */
+    static const char *const CYC_A[] = {"EDIT 1", "EDIT 2", "FILTER", "VOICE", "VOICE 2", "VOICE 3", "EDIT 1"};   /* (SWARM: its own FILTER page: TYPE CUT RES KEY; ANALOG's went with it) */
     static const char *const CYC_D[] = {"EDIT 1", "EDIT 2", "OP1 ENV", "OP2 ENV", "OP3 ENV", "OP4 ENV",
                                         "OP LEVEL", "VOICE", "VOICE 2", "VOICE 3", "EDIT 1"};
     int bad = 0, ok;
@@ -3525,7 +3525,7 @@ static int test_edit_cycle(void)
         ok &= !str_eq(PAGES[i].title, "ENGINE");
     bad += check("no ENGINE page (engines are the EDIT layer's)", ok);
     set_engine_of(TSEL, 14);
-    bad += check("EDIT cycle (SWARM): EDIT 1 EDIT 2 VOICE VOICE 2 VOICE 3 EDIT 1", engine_cycle(CYC_A, NELEM(CYC_A)));
+    bad += check("EDIT cycle (SWARM): EDIT 1 EDIT 2 FILTER VOICE VOICE 2 VOICE 3 EDIT 1", engine_cycle(CYC_A, NELEM(CYC_A)));
 #if FELUCCA_FM4
     set_engine_of(TSEL, 1);
     bad += check("EDIT cycle (DIGITAL): EDIT 1 EDIT 2 OP1..OP4 ENV OP LEVEL VOICE VOICE 2 VOICE 3 EDIT 1",
@@ -6416,8 +6416,8 @@ static int test_seq_tools(void)
     ok = !memcmp(TSEL->step, ref, sizeof ref) && tl_lock_at(3) && TSEL->p[P_SLEN] == 8 && msg_is("SEQUENCE PUT BACK") &&
          ui.layer == LAYER_SEQ && song.octave == 0;
     turn(EN_K1, -2);
-    ok &= TSEL->p[P_SLEN] == 16;                        /* KNOB 1: LEN (the PATTERN page's four); 1.0.0: in blocks of 16 (ui_input.c
-                                                         * edit_param: 16, 32, 48, 64), a length set elsewhere (8) snaps to the next block */
+    ok &= TSEL->p[P_SLEN] == 6;                         /* KNOB 1: LEN (the PATTERN page's four), a step a detent (it was blocks of 16 up to
+                                                         * 1.x: ui_input.c edit_param), so 8 turned down twice is 6 */
     oct_back();
     ok &= TSEL->p[P_SLEN] == 8;
     btn_up(B_SEQ); frame();
@@ -6426,6 +6426,26 @@ static int test_seq_tools(void)
     hold(B_SAVE);
     ok &= !memcmp(TSEL->step, ref, sizeof ref);
     bad += check("  OCT-: the track as the layer opened (steps, locks, LEN); KNOB 1..4 LEN DIV SWING GATE", ok);
+    {   /* LEN is a step a detent: 15 and 7 (a polyrhythm against 16) are one and nine detents under 16, 64 the end */
+        btn_down(B_SEQ); frame();
+        TSEL->p[P_SLEN] = 16;
+        turn(EN_K1, -1);
+        ok = TSEL->p[P_SLEN] == 15;
+        for (i = 0; i < 8u; i++) { frames(80); turn(EN_K1, -1); }
+        ok &= TSEL->p[P_SLEN] == 7;
+        frames(80); turn(EN_K1, 1);
+        ok &= TSEL->p[P_SLEN] == 8;
+        TSEL->p[P_SLEN] = 1;
+        frames(80); turn(EN_K1, -1);
+        ok &= TSEL->p[P_SLEN] == 1;
+        TSEL->p[P_SLEN] = 63;
+        frames(80); turn(EN_K1, 1);
+        ok &= TSEL->p[P_SLEN] == 64;
+        frames(80); turn(EN_K1, 1);
+        ok &= TSEL->p[P_SLEN] == 64;
+        btn_up(B_SEQ); frame();
+        bad += check("  LEN, KNOB 1 on the PATTERN page: a step a detent (16 -> 15, ... 7; 1 and 64 are the ends), not blocks of 16", ok);
+    }
 
     /* RANDOM / COOK on a melodic track (fixed seeds): the rhythm stays, the notes in the scale, near the middle */
     ok = okc = 1;
@@ -7198,12 +7218,13 @@ static int test_fx_latch(void)
 }
 
 /* #48: the note divisions step by their length, longest first (triplets between their neighbours), on every list
- * that has them (SEQ DIV, ARP RATE, the delay's TIME, the SLICER's RATE); the stored values and their sound stay */
+ * that has them (SEQ DIV, ARP RATE, the SLICER's RATE); the stored values and their sound stay. (The delay's TIME is F_DTIME now:
+ * the same 10 and the dotted ones, then milliseconds; tests/delay_test.c) */
 static int test_div_order(void)
 {
     int bad = 0, ok = 1;
     uint32_t id, c, k, found = 0;
-    static const param_desc_t *const LISTS[] = {&TP[P_SDIV], &TP[P_ARATE], &GP[G_DTIME], &TP[P_SLRATE]};
+    static const param_desc_t *const LISTS[] = {&TP[P_SDIV], &TP[P_ARATE], &TP[P_SLRATE]};
     ui_power_on();
     for (k = 0; k < NELEM(LISTS); k++) {           /* left end -> right end: each one shorter than the one before */
         const param_desc_t *d = LISTS[k];
@@ -7227,7 +7248,7 @@ static int test_div_order(void)
     ok &= param_turn(&TP[P_SDIV], 2, 1) == 5 && param_turn(&TP[P_SDIV], 2, -1) == 4 &&   /* 1/16: right 16T, left 8T */
           param_turn(&TP[P_SDIV], 3, 1) == 3 && param_turn(&TP[P_SDIV], 9, -1) == 9 &&   /* the ends hold */
           param_turn(&TP[P_SDIV], 2, -6) == 8 && param_turn(&TP[P_SDIV], 2, 40) == 3;    /* 6 left: 2BAR; far: clamped */
-    bad += check("#48 DIV / RATE / TIME / SLICER RATE step longest -> shortest, every value once, the ends hold", ok);
+    bad += check("#48 DIV / RATE / SLICER RATE step longest -> shortest, every value once, the ends hold", ok);
     ok = 1;                                         /* the real knob on the pages that show them, the gauge follows */
     for (id = 0; id < NPAGES; id++)
         for (c = 0; c < 4u; c++) {
@@ -7253,7 +7274,7 @@ static int test_div_order(void)
     turn(EN_K2, -2);
     ok &= TSEL->p[P_SDIV] == 4;
     btn_up(B_SEQ); frame();
-    bad += check("#48 the pages' knobs step the divisions by length (SEQ TOOLS, ARP, DLY, SLICER)", ok && found >= 3u);
+    bad += check("#48 the pages' knobs step the divisions by length (SEQ TOOLS, ARP, SLICER)", ok && found >= 2u);
     return bad;
 }
 

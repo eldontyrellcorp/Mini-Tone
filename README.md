@@ -16,8 +16,11 @@ it changes:
   Four), BRAIDS (Mutable Instruments' Braids: its 48 models), SWARMER (Digitone 2), FMTONE (Digitone 2), WAVETONE (Digitone 2), FMDRUM (Digitone 2) 
   and TB303 (Roland's TB-303); the engines ANALOG, PHASE, LOFI, SAMPLE, VOICE, TRIO, WHEEL, GRAIN, PHYS, NOISE and SLICE (and the user sample slots) are removed
 - **A ping-pong stereo delay** (MENU > AUDIO > PING PONG, DLY HALF: the line at half the sample rate for twice the time)
+  with a **TIME** of 16 note values (4BAR to 1/32, triplets, and the dotted 1/1D 1/2D 1/4D 1/8D 1/16D 1/32D) and then **1 to 1486 ms** off the
+  grid (the tempo does not move them); the time glides to a new TIME (8 samples a block, a tape's glide) instead of clicking
 - **The ELEK reverb** (FX > REVERB TYPE ELEK, pages ELEK REV and ELEK REV 2: PRE DEC FRQ GAIN HPF LPF VOL)
-- **LEN in blocks of 16** (16, 32, 48, 64 on the knob), themes by MENU > DISPLAY > COLOR
+- **LEN any length, 1 to 64**, a step a detent (the knob went in blocks of 16): 7 against 16, 15 against 4 are polyrhythms, each track cycling on its own
+  (tests/poly_test.c); themes by MENU > DISPLAY > COLOR
 - MIDI IN: CH1-6, SEL, CH5-10, CH9-14, CH13-16 (the block of channels the six tracks follow)
 
 ## Features
@@ -208,6 +211,15 @@ loads with its values and plays silence):
   web editor (which imports .syx files) or on the device: EDIT > OPERATOR (ratio or fixed frequency, fine, level),
   OP ENV (each stage's rate and level, drawn as the envelope) and OPERATOR 2 (mode, detune, velocity), one
   operator at a time on the algorithm chart; macros on top; SLOT picks a factory patch (F1–F8), the track's own (OWN) or a voice of the bank the web editor sent (B1–B32)
+- **The resonant filter** (SWARM, FMTONE, WAVETONE, CHIP, DUALVCO, and ANALOG4's two): a multimode filter (TYPE LP / BP / HP, a
+  12 dB state-variable) with CUT, RES and KEY (key tracking) on each engine's own FILTER page. RES runs on from a Q of 0.5 through 32
+  into **self-oscillation** (from about 118): the filter rings by itself as a near-sine at the cutoff, with a level that holds at every
+  pitch, even from a silent voice; with KEY 127 the cutoff follows the note one to one, so CUT 44 puts the ring on C4 (262 Hz) and CUT
+  52 a fifth above the note. The resonance is fat, not thin: the filter's state saturates softly, so a high Q rounds and thickens
+  instead of squealing, and the closer RES gets to the ring the more the filter is the source of the sound. CUT 127 with RES 0 and
+  TYPE LP leaves FMTONE, WAVETONE, CHIP and DUALVCO exactly as they were; SWARM's filter was always on, and now has RES, KEY and TYPE
+  (RES 0 and KEY 0 are close to its old fixed filter). ENV / LFO -> FLT move CUT. The engines' filters are in `dsp.c` (rsvf), tested in
+  `tests/rsvf_test.c`
 - **SWARM**: a super-saw cluster in the manner of Elektron's Swarmer machine: one main oscillator and six detuned swarm
   oscillators, each of the two groups with its own waveform (SAW SQR TRI SIN), the main able to sit one or two octaves
   down (OCT), DTN the swarm's detune, MIX the swarm against the main, ANIM a slow drift of each swarm oscillator's detune,

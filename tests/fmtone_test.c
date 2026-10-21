@@ -575,8 +575,10 @@ int main(void)
               d->min == -64 && d->max == 63 && d->def == 0 && param_fit(d, 100) == 63 && param_fit(d, -100) == -64);
         check("every other engine keeps TP's descriptor of the slot (0..127)", o == &TP[P_FM3_REL] && o->min == 0 && o->max == 127);
         host_preset(&trk[0], 0, 0);
-        check("an unused slot (P_FM3_SUS) is TP's even for FMTONE",
-              param_desc_of(15, P_FM3_SUS) == &TP[P_FM3_SUS] && param_desc_of(15, P_FM4_LEVEL) == &TP[P_FM4_LEVEL]);
+        check("an unused slot (P_FM3_SUS, P_FM3_LEVEL) is TP's even for FMTONE; the fourth group's SUS REL LEVEL are the filter's CUT RES KEY",
+              param_desc_of(15, P_FM3_SUS) == &TP[P_FM3_SUS] && param_desc_of(15, P_FM3_LEVEL) == &TP[P_FM3_LEVEL] &&
+                  str_eq(param_desc_of(15, P_FM4_SUS)->label, "CUT") && str_eq(param_desc_of(15, P_FM4_REL)->label, "RES") &&
+                  str_eq(param_desc_of(15, P_FM4_LEVEL)->label, "KEY"));
         ok = 1;
         for (k = 0; k < ENG_FMTONE.npresets; k++) {
             host_preset(&trk[0], 15, k);

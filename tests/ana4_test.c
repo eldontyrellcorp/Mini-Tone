@@ -270,7 +270,8 @@ int main(void)
         c = renderr(e, 57, 16000);
         printf("ana4: late in the note, CUT1 100, rms: FSUS 127 %.4f, FSUS 0 with F1EN 127 %.4f, with F1EN 0 %.4f\n", a, b, c);
         check("F1EN with FSUS 0: the envelope has closed the filter late in the note", b < a * 0.1);
-        check("F1EN 0: the envelope does nothing (FSUS 0 or not)", fabs(c / a - 1.0) < 1e-6);
+        printf("ana4: F1EN 0 against the envelope at its top: rms differ by %.2e (the top is one 1/256 step of the cutoff off: 32767 against 1.0 = 32768)\n", c / a - 1.0);
+        check("F1EN 0: the envelope does nothing (FSUS 0 or not): the same to a 1/256 step of the cutoff (1e-3)", fabs(c / a - 1.0) < 1e-3);
         S(AP_F1EN) = 127;
         S(AP_FA) = 90;
         S(AP_FD) = 0;

@@ -55,6 +55,7 @@ typedef struct {
     uint16_t del[2];             /* the delay ticks left */
     uint8_t st[2];               /* 0 delay, 1 attack, 2 decay / end */
     int32_t dx1, dy1;            /* the DC blocker's last input, and its output as Q8 */
+    int32_t fi1, fi2;            /* the voice filter (Q8) */
     uint8_t init;                /* 0 until the first block: ia, ib start at its values (no ramp from 0) */
     uint8_t rsv[3];
 } fmt_slot_t;
@@ -63,7 +64,9 @@ ENG_MEM_FITS("FMTONE", sizeof(fmt_slot_t) * FMT_POLY);
 /* the operator slots as FMTONE names them. Slot k of operator group g = P_FM{g}_ATK + 5 g + k: ATK DEC SUS REL LEVEL.
  * Same range and default as TP's where they are not bipolar (a sound load starts from TP's defaults). A (g 1), B (g 2):
  * ATK DEC END(SUS) DEL(REL) LEV; the third group's ATK / DEC are TRK A / TRK B, its REL FTO A; the fourth's ATK / DEC
- * FTO B1 / FTO B2. The rest (P_FM3_SUS, P_FM3_LEVEL, P_FM4_SUS, P_FM4_REL, P_FM4_LEVEL) are not used: TP's. */
+ * FTO B1 / FTO B2. The fourth group's SUS, REL and LEVEL are the voice filter's CUT, RES and KEY (dsp.c rsvf, the FILTER
+ * page: TYPE CUT RES KEY, P_FTYPE its TYPE); CUT 127, RES 0 and LP leave the voice as it was. P_FM3_SUS and P_FM3_LEVEL
+ * are not used: TP's. */
 static const param_desc_t FMT_TD[P_FM4_LEVEL - P_FM1_ATK + 1] = {
     [P_FM1_ATK - P_FM1_ATK] = {"ATK", F_TIME, 0, 127, 0, 0, 0},
     [P_FM1_DEC - P_FM1_ATK] = {"DEC", F_TIME, 0, 127, 0, 0, 0},
@@ -80,6 +83,9 @@ static const param_desc_t FMT_TD[P_FM4_LEVEL - P_FM1_ATK + 1] = {
     [P_FM3_REL - P_FM1_ATK] = {"FTO A", F_INT, -64, 63, 0, 0, "ct"},
     [P_FM4_ATK - P_FM1_ATK] = {"FTO B1", F_INT, -64, 63, 0, 0, "ct"},
     [P_FM4_DEC - P_FM1_ATK] = {"FTO B2", F_INT, -64, 63, 0, 0, "ct"},
+    [P_FM4_SUS - P_FM1_ATK] = {"CUT", F_CUTOFF, 0, 127, 127, 0, 0},
+    [P_FM4_REL - P_FM1_ATK] = {"RES", F_PCT, 0, 127, 0, 0, 0},
+    [P_FM4_LEVEL - P_FM1_ATK] = {"KEY", F_PCT, 0, 127, 127, 0, 0},
 };
 static const param_desc_t *fmt_tdesc(uint32_t id)
 {
@@ -116,6 +122,8 @@ static void fmt_note_on(track_t *t, voice_t *v)
         S->ph[0] = S->ph[1] = S->ph[2] = S->ph[3] = 0;
         S->fb1 = S->fb2 = 0;
         S->dx1 = S->dy1 = 0;
+        S->fi1 = 0;
+        S->fi2 = rsvf_seed(t->p[P_FM4_REL]);
     }
     for (g = 0; g < 2u; g++) {                        /* the envelopes (re)start: after their delay */
         uint32_t d = fmt_del_ticks(t->p[P_FM1_REL + g * 5u]);
@@ -193,8 +201,10 @@ static void fmt_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const v
     uint32_t alg = (uint32_t)p[P_E0] & 7u, i, rc, ra, rb1, rb2;
     int32_t harm = p[P_E4], hp = harm > 0 ? harm : 0, hn = harm < 0 ? (-harm > 63 ? 63 : -harm) : 0;
     int32_t dtn = p[P_E5], fbi = p[P_E6] << 8, w = p[P_E7] * 258, la, lb, sa, sb, ia1, ib1, ia, ib, dia, dib;
-    int32_t pr, norm, fb1, fb2, adj, dx1, dy1;
-    uint32_t pc, pa, p1, p2, ic, iaa, i1, i2;
+    int32_t pr, norm, fb1, fb2, adj, dx1, dy1, fi1, fi2;
+    int32_t fcut = clamp(p[P_FM4_SUS], 0, 127), fres = clamp(p[P_FM4_REL], 0, 127);
+    uint32_t pc, pa, p1, p2, ic, iaa, i1, i2, fty = (uint32_t)p[P_FTYPE] % 3u, fon = fcut < 127 || fres > 0 || fty;
+    rsvf_t rf;
     if (!S)
         return;
     if (n > CTL)
@@ -240,6 +250,10 @@ static void fmt_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const v
     fb2 = S->fb2;
     dx1 = S->dx1;
     dy1 = S->dy1;
+    fi1 = S->fi1;
+    fi2 = S->fi2;
+    if (fon)
+        rsvf_coef(&rf, rsvf_key(fcut, m->cutoff, clamp(p[P_FM4_LEVEL], 0, 127), m->pitch16), fres);
     for (i = 0; i < n; i++) {
         int32_t o1, o2, o3, o4, s, ga, gb;
         ia += dia;
@@ -305,6 +319,8 @@ static void fmt_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const v
             dx1 = s;
             s = (dy1 + 128) >> 8;
         }
+        if (fon)
+            s = soft_knee(rsvf_run(&rf, s >> 1, &fi1, &fi2, fty), 16000) << 1;
         out[i] += voice_amp(s, m, i);                              /* full-scale sines: as DIGITAL, no << 1 */
     }
     S->ia = ia1;
@@ -317,12 +333,15 @@ static void fmt_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const v
     S->fb2 = fb2;
     S->dx1 = dx1;
     S->dy1 = dy1;
+    S->fi1 = fi1;
+    S->fi2 = fi2;
 }
 
 /* factory presets: the engine values, and the operator slots the preset needs (fmt_track_loaded) */
 typedef struct {
     int8_t a[5], b[5];           /* operator A / B: ATK DEC END DEL LEV */
     int8_t k[2], f[3];           /* TRK A, TRK B; FTO A, FTO B1, FTO B2 */
+    int8_t fl[4];                /* the filter: RES, 127 - CUT, 127 - KEY, TYPE (zeros: no filter, 100 % key, LP) */
 } fmt_x_t;
 /* name, {ALGO, RAT C, RAT A, RAT B, HARM, DTN, FB, MIX}, {A D S R}, fenv, mono. The time knobs are 10000^(v/127) ms:
  * 40 18 ms, 60 77 ms, 80 0.33 s, 100 1.4 s, 110 2.9 s, 120 6 s; LEV 10 is ~1 rad of modulation, 25 ~2.5 rad */
@@ -333,6 +352,9 @@ static const preset_t FMT_PRESETS[] = {
     {"BRASS", {1, 3, 3, 3, 10, 0, 20, 127}, {40, 70, 100, 55}, 0, 0, FX(0, 20, 25, 40), PAT(6)},
     {"GLASS PAD", {4, 3, 6, 6, 0, 6, 0, 80}, {85, 90, 110, 95}, 0, 0, FX(0, 55, 25, 70), PAT(5)},
     {"PLUCK LEAD", {2, 3, 6, 4, 0, 4, 15, 127}, {0, 75, 60, 40}, 0, 1, FX(0, 15, 40, 30), PAT(4)},
+    /* the resonant filter: a plucked lead through a Q of 12 the envelope opens; a bell with the filter ringing a fifth above it */
+    {"RESO PLUCK", {2, 3, 6, 4, 0, 4, 15, 127}, {0, 75, 60, 40}, 40, 1, FX(0, 15, 40, 30), PAT(4)},
+    {"FIFTH RING", {0, 3, 3, 3, 0, 0, 0, 127}, {0, 90, 70, 60}, 0, 0, FX(0, 20, 30, 50), PAT(5)},
 };
 static const fmt_x_t FMT_X[NELEM(FMT_PRESETS)] = {
     {{0, 85, 12, 0, 42}, {0, 55, 0, 0, 30}, {25, 0}, {0, 0, 0}},       /* TINE EP: a bright start that mellows */
@@ -341,6 +363,8 @@ static const fmt_x_t FMT_X[NELEM(FMT_PRESETS)] = {
     {{70, 0, 100, 0, 46}, {62, 0, 100, 0, 16}, {10, 0}, {0, 0, 0}},   /* BRASS: the modulation swells in */
     {{80, 85, 70, 20, 30}, {85, 90, 60, 0, 22}, {0, 0}, {0, 5, -5}},   /* GLASS PAD: slow, B1 / B2 a little apart */
     {{0, 55, 30, 0, 32}, {0, 45, 0, 0, 40}, {25, 0}, {0, 0, 0}},       /* PLUCK LEAD */
+    {{0, 55, 30, 0, 32}, {0, 45, 0, 0, 40}, {25, 0}, {0, 0, 0}, {90, 77, 27, 0}},    /* RESO PLUCK: CUT 50, KEY 100 % */
+    {{0, 90, 20, 0, 24}, {0, 80, 0, 0, 14}, {0, 0}, {0, 0, 0}, {127, 75, 0, 0}},     /* FIFTH RING: CUT 52, KEY 127: G over the C */
 };
 
 static const engine_t ENG_FMTONE = {
@@ -379,6 +403,10 @@ static void fmt_track_loaded(track_t *t)
         t->p[P_FM1_ATK + k] = x->a[k];
         t->p[P_FM2_ATK + k] = x->b[k];
     }
+    t->p[P_FM4_REL] = x->fl[0];                        /* the filter */
+    t->p[P_FM4_SUS] = 127 - x->fl[1];
+    t->p[P_FM4_LEVEL] = 127 - x->fl[2];
+    t->p[P_FTYPE] = x->fl[3];
     t->p[P_FM3_ATK] = x->k[0];
     t->p[P_FM3_DEC] = x->k[1];
     t->p[P_FM3_REL] = x->f[0];

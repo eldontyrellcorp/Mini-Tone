@@ -258,7 +258,30 @@ int main(void)
         for (i = 0; i < N; i++)
             eb += y[i] * y[i];
         printf("sid: TRI+SAW energy: 6581 %.4g, 8580 %.4g\n", ea / N, eb / N);
-        check("MODEL: the 8580's TRI+SAW is far louder than the 6581's (reSID's tables: 6.4x in level)", eb > ea * 10);
+        check("MODEL: the 8580's TRI+SAW is still louder than the 6581's (4x the make-up gain's 4x: the tables differ 6.4x in level)", eb > ea * 3);
+    }
+    {                                                          /* the sampled waves: on a harmonic, and not 20 dB under the rest */
+        static const struct { uint8_t wave, model; double min_rms, max_nh; const char *what; } cw[] = {
+            {4, 0, 0.08, 10, "6581 TRI+SAW"}, {5, 0, 0.15, 5, "6581 TRI+PUL"}, {6, 0, 0.10, 8, "6581 SAW+PUL"},
+            {4, 1, 0.15, 3, "8580 TRI+SAW"}, {5, 1, 0.15, 3, "8580 TRI+PUL"}, {6, 1, 0.15, 3, "8580 SAW+PUL"}, {7, 1, 0.15, 3, "8580 T+S+P"}};
+        uint32_t r;
+        for (r = 0; r < NELEM(cw); r++) {
+            int16_t c[8] = {cw[r].wave, 64, 0, 0, 0, 0, 0, cw[r].model};
+            double f0 = hz_of(60), e = 0, in = 0;
+            uint32_t k, b;
+            render(c, 60, y, N);
+            spec(y, ps);
+            for (i = 0; i < N; i++)
+                e += y[i] * y[i];
+            for (k = 1; k * f0 < FS / 2; k++)           /* the energy within +-2 bins of a harmonic */
+                for (b = (uint32_t)(k * f0 * N / FS + 0.5) - 2; b <= (uint32_t)(k * f0 * N / FS + 0.5) + 2; b++)
+                    in += ps[b];
+            e = sqrt(e / N);
+            in = 100.0 * (1.0 - in / band(ps, 100, FS / 2 - 1));
+            printf("sid: %s at C4: rms %.3f, %.1f %% of the energy off the harmonics\n", cw[r].what, e, in);
+            check("a sampled wave is audible and its energy sits on the harmonics (the table is read as a box average)",
+                  e > cw[r].min_rms && in < cw[r].max_nh);
+        }
     }
     {                                                          /* SYNC restarts the oscillator at the modulator's MSB: no drift */
         int16_t c[8] = {1, 64, 1, 12, 0, 90, 0, 0};

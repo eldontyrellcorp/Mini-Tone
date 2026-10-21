@@ -26,6 +26,7 @@
  * Voice state: ph[0] the oscillator, ph[1] the ring modulator, ph[2] the increment of the arpeggiator's note, s[0] the
  * time into the step (1/256 sample), s[1] the step counter since the note on, s[2] the noise register, s[4] the decay
  * envelope (Q24). */
+#define ENGI_CHIP 19u            /* engines.c ENGINES[] (append-only) */
 #define CHIP_POLY 4
 #define CHIP_W_STATIC 7u
 #define CHIP_W_ANIM 7u                   /* first animated wave */
@@ -151,6 +152,24 @@ static uint32_t chip_period(uint32_t spd, uint32_t *single)
     return (uint32_t)((256u * FS) / hz);
 }
 
+
+/* the voice filter (dsp.c rsvf), on the operator slots (engine_t.tdesc names them; the FILTER page shows for the engine only):
+ * CUT P_FM1_SUS (default 127: open), RES P_FM1_REL (0), KEY P_FM1_LEVEL (127: 100 percent); P_FTYPE is the TYPE. CUT 127, RES 0
+ * and LP: no filter (the sound is as it was) */
+#define CHP_CUT P_FM1_SUS
+#define CHP_RES P_FM1_REL
+#define CHP_KEY P_FM1_LEVEL
+static const param_desc_t CHP_TD[P_FM4_LEVEL - P_FM1_ATK + 1] = {
+    [CHP_CUT - P_FM1_ATK] = {"CUT", F_CUTOFF, 0, 127, 127, 0, 0},
+    [CHP_RES - P_FM1_ATK] = {"RES", F_PCT, 0, 127, 0, 0, 0},
+    [CHP_KEY - P_FM1_ATK] = {"KEY", F_PCT, 0, 127, 127, 0, 0},
+};
+static const param_desc_t *chip_tdesc(uint32_t id)
+{
+    const param_desc_t *d = &CHP_TD[id - P_FM1_ATK];
+    return d->label ? d : 0;
+}
+
 static void chip_note_on(track_t *t, voice_t *v)
 {
     (void)t;
@@ -159,6 +178,8 @@ static void chip_note_on(track_t *t, voice_t *v)
     v->s[1] = 0;
     v->s[2] = (int32_t)CHIP_LFSR_INIT;
     v->s[4] = 1 << 24;
+    v->s[5] = 0;                                          /* the voice filter (a retrigger keeps it: engine_t.keep) */
+    v->s[6] = rsvf_seed(t->p[CHP_RES]);
 }
 
 /* the voice's amplitude: the track's ADSR (it gates and releases the voice) times the engine's decay */
@@ -174,7 +195,10 @@ static void chip_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const 
     int32_t tune = p[P_E0], off[4], drive = p[P_E7];
     uint32_t wv = (uint32_t)p[P_E1], single, period = chip_period((uint32_t)p[P_E2], &single), len = 1, i;
     uint32_t ph0 = v->ph[0], ph1 = v->ph[1], inc, acc = (uint32_t)v->s[0], st = (uint32_t)v->s[1], lf = (uint32_t)v->s[2];
-    uint32_t w, pw, ring, step_note;
+    uint32_t w, pw, ring, step_note, fty = (uint32_t)p[P_FTYPE] % 3u;
+    int32_t fcut = clamp(p[CHP_CUT], 0, 127), fres = clamp(p[CHP_RES], 0, 127), fi1 = v->s[5], fi2 = v->s[6];
+    uint32_t fon = fcut < 127 || fres > 0 || fty;
+    rsvf_t rf;
     if (!lf)
         lf = CHIP_LFSR_INIT;
     if (period < 256u)
@@ -188,6 +212,8 @@ static void chip_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const 
     step_note = single ? (st < len ? st : len - 1u) : st % len;
     chip_wave_at(wv, st, &w, &pw, &ring);
     inc = pitch_inc((uint32_t)clamp(m->pitch16 + (tune + off[step_note]) * 16, 0, 2047));
+    if (fon)
+        rsvf_coef(&rf, rsvf_key(fcut, m->cutoff, clamp(p[CHP_KEY], 0, 127), m->pitch16), fres);
     for (i = 0; i < n; i++) {
         int32_t s;
         uint32_t old = ph0;
@@ -207,6 +233,8 @@ static void chip_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const 
         if (drive) {                                      /* the analog overdrive: gain 1 .. ~25 into a tanh */
             s = softclip(((s >> 2) * (int32_t)(256 + drive * 50)) >> 6);
         }
+        if (fon)
+            s = soft_knee(rsvf_run(&rf, s >> 1, &fi1, &fi2, fty), 16000) << 1;
         out[i] += voice_amp(s, m, i);
         acc += 256u;
         if (acc >= period) {                              /* the next step of the arpeggiator */
@@ -225,6 +253,8 @@ static void chip_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const 
     v->s[0] = (int32_t)acc;
     v->s[1] = (int32_t)st;
     v->s[2] = (int32_t)lf;
+    v->s[5] = fi1;
+    v->s[6] = fi2;
 }
 
 /* name, {TUNE, WAVE, SPD, DEC, OF2, OF3, OF4, OVER}, {A D S R}, fenv, mono */
@@ -237,6 +267,11 @@ static const preset_t CHIP_PRESETS[] = {
     {"NOISE HAT", {12, 6, 27, 35, 12, 0, 0, 0}, {0, 64, 127, 5}, 0, 0, FX(0, 0, 10, 15), PAT(13)},
     {"RING LEAD", {0, 7, 15, 127, 0, 0, 0, 10}, {0, 64, 127, 40}, 0, 1, FX(0, 10, 35, 25), PAT(4)},
     {"CHIP PLUCK", {0, 5, 21, 90, 12, 7, 0, 0}, {0, 64, 127, 30}, 0, 0, FX(0, 10, 30, 20), PAT(3)},
+    {"RESO ARP", {0, 5, 15, 127, 4, 7, 12, 0}, {0, 64, 127, 35}, 20, 0, FX(0, 15, 25, 25), PAT(13)},
+};
+/* the filter of each preset (chip_track_loaded): RES, 127 - CUT, 127 - KEY, TYPE; zeros are the defaults (open, 100 %, LP) */
+static const int8_t CHP_X[NELEM(CHIP_PRESETS)][4] = {
+    [8] = {100, 72, 0, 0},       /* RESO ARP: Q 11 at CUT 55, the envelope opening it, following the key */
 };
 
 static const engine_t ENG_CHIP = {
@@ -259,4 +294,19 @@ static const engine_t ENG_CHIP = {
     .amp = chip_amp,
     .knob = {P_E1, P_E2, P_E3, P_E7},
     .poly = CHIP_POLY,
+    .tdesc = chip_tdesc,
+    .keep = 0x60,                /* the voice filter */
 };
+
+/* the preset a track just loaded (ui.c apply_preset_to, tests/hostsim.c): its filter */
+static void chip_track_loaded(track_t *t)
+{
+    const int8_t *x;
+    if (t->eng_req != ENGI_CHIP)
+        return;
+    x = CHP_X[(uint32_t)t->preset % NELEM(CHP_X)];
+    t->p[CHP_RES] = x[0];
+    t->p[CHP_CUT] = 127 - x[1];
+    t->p[CHP_KEY] = 127 - x[2];
+    t->p[P_FTYPE] = x[3];
+}

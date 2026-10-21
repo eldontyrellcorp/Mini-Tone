@@ -11,6 +11,15 @@ static const char *const N_LPOL[] = {"BI", "UNI"};
 static const char *const N_AMODE[] = {"OFF", "UP", "DN", "UPDN", "RND", "ORD", "REPEAT",   /* (append-only: seq.c AM_*) */
                                        "DNUP", "UP+8", "CONV", "DIVG", "PINKY", "THUMB", "WALK", "CHORD"};
 static const char *const N_DIV[] = {"1/4", "1/8", "1/16", "1/32", "8T", "16T", "1/2", "1/1", "2BAR", "4BAR"};
+/* The delay's TIME (G_DTIME, F_DTIME): 0..9 the note values of N_DIV (the stored ids as they always were), 10..15 the dotted ones
+ * (1/4D 1/8D 1/16D 1/32D 1/2D 1/1D: 1.5 x the note), and from 16 milliseconds: v - 15 ms, 1 .. 1486 (the line holds 1.49 s). The
+ * knob goes longest first through the 16 note values (DTIME_ORDER), then on into the milliseconds, 1 ms up */
+static const char *const N_DTIME[] = {"1/4", "1/8", "1/16", "1/32", "8T", "16T", "1/2", "1/1", "2BAR", "4BAR",
+                                       "1/4D", "1/8D", "1/16D", "1/32D", "1/2D", "1/1D"};
+#define DTIME_NOTES 16
+#define DTIME_MAX (DTIME_NOTES - 1 + 1486)
+static const uint8_t DTIME_ORDER[DTIME_NOTES] = {9, 8, 15, 7, 14, 6, 10, 0, 11, 1, 12, 4, 2, 13, 5, 3};
+                                                /* 4BAR 2BAR 1/1D 1/1 1/2D 1/2 1/4D 1/4 1/8D 1/8 1/16D 8T 1/16 1/32D 16T 1/32 */
 static const char *const N_SCALE[] = {"CHR", "MAJ", "MIN", "DOR", "MIX", "PEN", "MPEN", "HARM",
                                     "PHRY", "LYD", "LOC", "MEL", "BLUES", "WHOLE", "DIMHW", "DIMWH"};
 static const char *const N_ONOFF[] = {"OFF", "ON"};
@@ -212,7 +221,7 @@ static const param_desc_t GP[G_COUNT] = {
     [G_SWING] = PD("SWG", F_PCT, 0, 100, 0),
     [G_CLOCK] = PE("CLK", N_CLOCK, 0),
     [G_TUNE] = PD("TUNE", F_INT, -50, 50, 0),     /* cents; edited on MENU > AUDIO TUNE (1.2: menu_items.c MI_TUNE) */
-    [G_DTIME] = PE("TIME", N_DIV, 1),
+    [G_DTIME] = {"TIME", F_DTIME, 0, DTIME_MAX, 1, N_DTIME, 0},
     [G_DFDBK] = PD("FDBK", F_PCT, 0, 120, 60),
     [G_DCOLOR] = PD("COLR", F_PCT, 0, 127, 70),
     [G_DMIX] = PD("MIX", F_PCT, 0, 127, 90),
@@ -332,6 +341,12 @@ static int32_t enum_rank(const param_desc_t *d, int32_t v)   /* v's place in the
 {
     const uint8_t *o = enum_order(d);
     int32_t r;
+    if (d->fmt == F_DTIME) {                          /* the 16 note values in DTIME_ORDER, then the milliseconds (rank = value) */
+        for (r = 0; v < DTIME_NOTES && r < DTIME_NOTES; r++)
+            if (DTIME_ORDER[r] == v)
+                return r;
+        return v;
+    }
     for (r = 0; o && r < d->max - d->min; r++)
         if (o[r] == v - d->min)
             break;
@@ -341,6 +356,10 @@ static int32_t enum_rank(const param_desc_t *d, int32_t v)   /* v's place in the
 static int32_t param_turn(const param_desc_t *d, int32_t v, int32_t steps)
 {
     const uint8_t *o = enum_order(d);
+    if (d->fmt == F_DTIME) {                          /* a step along the ranks: the note values, then the milliseconds */
+        int32_t r = clamp(enum_rank(d, v) + steps, 0, d->max);
+        return r < DTIME_NOTES ? DTIME_ORDER[r] : r;
+    }
     if (o)
         return o[clamp(enum_rank(d, v) - d->min + steps, 0, d->max - d->min)] + d->min;
     if (d->names == ESYNC_NAMES) {                    /* ENV SYNC: a note value a step (the first value showing it) */
@@ -425,6 +444,18 @@ static void param_format(const param_desc_t *d, int32_t v, char *val, const char
             str_cpy(val + 1, t, 6);
         }
         *unit = "st";
+        break;
+    case F_DTIME:
+        if (v < DTIME_NOTES) {
+            fmt_named = 1;
+            str_cpy(val, N_DTIME[v < 0 ? 0 : v], 6);
+        } else if (v - (DTIME_NOTES - 1) < 1000) {
+            fmt_int(val, v - (DTIME_NOTES - 1));
+            *unit = "ms";
+        } else {
+            fmt_fix(val, (v - (DTIME_NOTES - 1)) / 10, 2);
+            *unit = "s";
+        }
         break;
     case F_ENUM:
         str_cpy(val, d->names[v < d->min ? d->min : v > d->max ? d->max : v], 6);
@@ -549,6 +580,13 @@ static const page_t PAGES[] = {
     {"INTERACT", FAM_EDIT, SC_TRACK, GR_NONE, {P_FM1_ATK, P_FM1_DEC, P_FM1_REL, P_FM2_REL}, 17},
     {"UTIL", FAM_EDIT, SC_TRACK, GR_NONE, {P_FM2_ATK, P_FM2_DEC, 0xFF, 0xFF}, 17},
     {"NOISE", FAM_EDIT, SC_TRACK, GR_NONE, {P_FM3_ATK, P_FM3_DEC, P_FM1_SUS, P_FM2_SUS}, 17},
+    /* the resonant voice filter (dsp.c rsvf): SWARM's (own 15: TYPE, CUT = EDIT 2's, RES, KEY), FMTONE's (16), WAVETONE's (17), CHIP's (20) and DUALVCO's (21):
+     * TYPE CUT RES KEY, P_FTYPE its TYPE */
+    {"FILTER", FAM_EDIT, SC_TRACK, GR_NONE, {P_FTYPE, P_E7, P_FM1_REL, P_FM1_ATK}, 15},
+    {"FILTER", FAM_EDIT, SC_TRACK, GR_NONE, {P_FTYPE, P_FM4_SUS, P_FM4_REL, P_FM4_LEVEL}, 16},
+    {"FILTER", FAM_EDIT, SC_TRACK, GR_NONE, {P_FTYPE, P_FM3_SUS, P_FM3_REL, P_FM3_LEVEL}, 17},
+    {"FILTER", FAM_EDIT, SC_TRACK, GR_NONE, {P_FTYPE, P_FM1_SUS, P_FM1_REL, P_FM1_LEVEL}, 20},   /* CHIP's */
+    {"FILTER", FAM_EDIT, SC_TRACK, GR_NONE, {P_FTYPE, P_FM1_SUS, P_FM1_REL, P_FM1_LEVEL}, 21},   /* DUALVCO's */
     /* FMDRUM's (eng_fmdrum.c), own = 18 */
     {"RATIOS", FAM_EDIT, SC_TRACK, GR_NONE, {P_FM1_ATK, P_FM1_DEC, P_FM1_REL, P_FM1_SUS}, 18},
     {"FM MOD", FAM_EDIT, SC_TRACK, GR_NONE, {P_FM2_ATK, P_FM2_DEC, P_FM2_REL, 0xFF}, 18},

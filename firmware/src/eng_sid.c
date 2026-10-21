@@ -41,6 +41,10 @@ static const char *const N_SID_MOD[] = {"OFF", "SYNC", "RING", "SYN+RNG"};
 static const char *const N_SID_FMODE[] = {"OFF", "LP", "BP", "LP+BP", "HP", "NOTCH", "BP+HP", "ALL"};   /* 0 bypass, else the mode bits */
 static const char *const N_SID_MODEL[] = {"6581", "8580"};
 #define SID_LFSR_INIT 0x7FFFF8u
+#define SID_OVER 8                                       /* the sampled waves are read at 8 points of the sample, and averaged */
+/* make-up gain of the sampled waves (Q4, 16 = 1): the 6581's are spikes on silence, 15 to 25 dB below the 8580's (TRI+SAW
+ * mean 1.5 of 255, T+S+P 0.4); the soft knee at the end takes the spikes the gain lifts. [model][TRI+SAW, TRI+PUL, SAW+PUL, T+S+P] */
+static const uint8_t SID_TGAIN[2][4] = {{64, 16, 40, 96}, {16, 16, 16, 16}};
 
 static inline uint32_t sid_lfsr(uint32_t r) { return ((r << 1) | (((r >> 22) ^ (r >> 17)) & 1u)) & 0x7FFFFFu; }
 
@@ -97,18 +101,31 @@ static void sid_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const v
     const uint8_t (*wt)[4096] = SID_WAVE[model];
     uint32_t pw = (uint32_t)clamp(p[P_E1] * 32 + ((m->shape - (64 << 8)) >> 3), 16, 4080);
     uint32_t inc = m->inc, inc2 = 0, ph0 = v->ph[0], ph1 = v->ph[1], lf = (uint32_t)v->s[2] & 0x7FFFFFu;
-    int32_t vbp = v->s[0], vlp = v->s[1], vhp = v->s[4], ext = v->s[5], dc = v->s[6], q = 0, wd = 0;
+    int32_t vbp = v->s[0], vlp = v->s[1], vhp = v->s[4], ext = v->s[5], dc = v->s[6], q = 0, wd = 0, gain = 16;
+    uint32_t tab = mask == 3u || (mask >= 5u && mask != 8u);                 /* a sampled wave: SID_WAVE */
+    uint32_t d0 = inc >> 3, d1 = 0;                                      /* (SID_OVER points a sample) */
     if (!lf)
         lf = SID_LFSR_INIT;
     if (sync || ring)
         inc2 = pitch_inc(clamp(m->pitch16 + p[P_E3] * 16, 0, 2047));
+    d1 = inc2 >> 3;
+    if (tab)
+        gain = SID_TGAIN[model][mask == 3u ? 0 : mask - 4u];
     if (fm) {
         int32_t cq8 = clamp((p[P_E5] << 8) + m->cutoff, 0, 127 << 8), fc = (cq8 * 4128) >> 16;     /* 0 .. 2047 */
         wd = (((int32_t)SID_W0[model][fc] << 1) * SID_DT256) >> 14;                                 /* w0 * step / 64 */
         q = SID_Q1024[(p[P_E6] >> 3) & 15];
     }
     for (i = 0; i < n; i++) {
-        int32_t y = ((int32_t)sid_w12(mask, ph0, ph1, pw, ring, lf, wt) - 2048 - dc) * 2;     /* reSID: * envelope 255 >> 7 */
+        uint32_t w = sid_w12(mask, ph0, ph1, pw, ring, lf, wt);
+        int32_t y;
+        if (tab) {                                    /* the table's spikes are narrower than a sample's step: a box average */
+            uint32_t j;                               /* keeps them from folding down as noise */
+            for (j = 1; j < SID_OVER; j++)
+                w += sid_w12(mask, ph0 + j * d0, ph1 + j * d1, pw, ring, lf, wt);
+            w >>= 3;
+        }
+        y = (((int32_t)w - 2048 - dc) * 2 * gain) >> 4;                       /* reSID: * envelope 255 >> 7 */
         uint32_t old = ph0;
         ph0 += inc;
         if (mask == 8u) {                             /* the shift register is clocked as the accumulator's bit 19 rises */
@@ -160,7 +177,8 @@ static void sid_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const v
  * CUT is the FC register's 11 bits over 0..127: on the 6581 (MODEL 0) 0..24 is 220..300 Hz, 36 600 Hz, 48 1.6 kHz, 60
  * 4.4 kHz, 80 9.5 kHz, above it opens to 18 kHz; on the 8580 (MODEL 1) it is linear, about 100 Hz a step, so the same
  * patch wants a lower CUT. The first eight are the engine's first sounds, the rest show what reSID adds: the two chips
- * (the same patch on both: GROWL / ACID, the REEDs), the combined waveforms of real chips (PS, ST, PT, PST), every filter
+ * (the same patch on both: GROWL / ACID, the REEDs), the combined waveforms of real chips (PS, ST, PT, PST; the 6581's T+S+P
+ * is a table of 7 values, thin and rough: the 8580's is the one to play), every filter
  * mode, SYNC and RING with a RATIO, and the noise register at low notes */
 static const preset_t SID_PRESETS[] = {
     {"PULSE LEAD", {2, 40, 0, 0, 1, 48, 50, 0}, {0, 70, 100, 45}, 20, 1, FX(0, 10, 40, 25), PAT(4)},
@@ -179,7 +197,7 @@ static const preset_t SID_PRESETS[] = {
     {"8580 PS REED", {6, 70, 0, 0, 1, 35, 40, 1}, {10, 70, 90, 50}, 20, 0, FX(0, 15, 25, 30), PAT(4)},
     {"8580 ST PAD", {4, 0, 0, 0, 1, 40, 30, 1}, {80, 95, 100, 90}, 15, 0, FX(0, 50, 20, 60), PAT(5)},
     {"HOLLOW KEYS", {5, 60, 0, 0, 0, 0, 0, 0}, {0, 75, 20, 45}, 0, 0, FX(0, 15, 25, 40), PAT(6)},
-    {"PST VOWEL", {7, 45, 0, 0, 2, 45, 100, 0}, {20, 80, 90, 50}, 45, 1, FX(0, 20, 30, 35), PAT(4)},
+    {"PST VOWEL", {7, 45, 0, 0, 2, 15, 100, 1}, {20, 80, 90, 50}, 20, 1, FX(0, 20, 30, 35), PAT(4)},
     /* SYNC and RING MOD against the modulator RATIO semitones up (the modulator is a second oscillator, as voice 3 is) */
     {"SYNC RIP", {1, 0, 1, 3, 1, 56, 60, 0}, {0, 75, 100, 40}, 30, 1, FX(15, 10, 30, 20), PAT(4)},
     {"RING CLANG", {5, 64, 2, 13, 0, 0, 0, 0}, {0, 70, 0, 70}, 0, 0, FX(0, 20, 30, 55), PAT(7)},

@@ -637,7 +637,10 @@ int main(void)
         check("the same slot is TP's for ANALOG and FMTONE's own for FMTONE", o == &TP[WP_OFS1] && o->min == 0 && o->max == 127 && f != d);
         check("NCUT and NDEC default to 127 (open, stays), as TP's SUS slots do",
               param_desc_of(16, WP_NCUT)->def == 127 && param_desc_of(16, WP_NDEC)->def == 127 && TP[WP_NCUT].def == 127 && TP[WP_NDEC].def == 127);
-        check("an unused slot (P_FM3_REL) is TP's even for WAVETONE", param_desc_of(16, P_FM3_REL) == &TP[P_FM3_REL] && param_desc_of(16, P_FM4_LEVEL) == &TP[P_FM4_LEVEL]);
+        check("an unused slot (P_FM4_LEVEL) is TP's even for WAVETONE; P_FM3_SUS REL LEVEL are the filter's CUT RES KEY (defaults 127, 0, 127)",
+              param_desc_of(16, P_FM4_LEVEL) == &TP[P_FM4_LEVEL] && str_eq(param_desc_of(16, P_FM3_SUS)->label, "CUT") &&
+                  str_eq(param_desc_of(16, P_FM3_REL)->label, "RES") && str_eq(param_desc_of(16, P_FM3_LEVEL)->label, "KEY") &&
+                  param_desc_of(16, P_FM3_SUS)->def == 127 && param_desc_of(16, P_FM3_REL)->def == 0 && param_desc_of(16, P_FM3_LEVEL)->def == 127);
         ok = 1;
         for (k = 0; k < ENG_WAVETONE.npresets; k++) {
             host_preset(&trk[0], 16, k);
@@ -652,7 +655,7 @@ int main(void)
             int pg_own = 0;
             for (k = 0; k < NPAGES; k++)
                 pg_own += PAGES[k].own == 17;
-            check("three pages are WAVETONE's own (INTERACT, UTIL, NOISE)", pg_own == 3);
+            check("four pages are WAVETONE's own (INTERACT, UTIL, NOISE, FILTER)", pg_own == 4);
         }
     }
 

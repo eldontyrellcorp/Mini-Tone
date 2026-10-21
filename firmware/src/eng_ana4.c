@@ -124,6 +124,8 @@ static void a4_note_on(track_t *t, voice_t *v)
         v->ph[0] = v->ph[1] = v->ph[2] = 0;
         for (i = 0; i < 6u; i++)
             v->s[i] = 0;
+        v->s[1] = rsvf_seed(t->p[AP_RES1]);               /* (filter 1's low-pass state: a ring from a silent voice) */
+        v->s[3] = rsvf_seed(t->p[AP_RES2]);
         v->s[7] = (int32_t)((((v->note + 1u) * 0x9E3779B9u) ^ ((cnt ? ++*cnt : 1u) * 0xC2B2AE35u)) | 1u);
     }
     v->s[6] = 0;                                      /* both envelopes attack (a retrigger starts from where they are) */
@@ -142,17 +144,10 @@ static inline int32_t a4_osc(uint32_t w, uint32_t ph, uint32_t inc, uint32_t pw)
     }
 }
 
-/* a filter's output for one sample: type 0 LP, 1 BP, 2 HP; the trapezoidal SVF of dsp.c with the soft knee of SID's */
-static inline int32_t a4_flt(const tsvf_t *c, int32_t k, uint32_t ty, int32_t in, int32_t *ic1, int32_t *ic2)
+/* a filter's output for one sample: type 0 LP, 1 BP, 2 HP; dsp.c's resonant SVF (RES up to self-oscillation) with the soft knee of SID's */
+static inline int32_t a4_flt(const rsvf_t *c, uint32_t ty, int32_t in, int32_t *ic1, int32_t *ic2)
 {
-    int32_t v3 = in - *ic2;
-    int32_t v1 = (c->a1 * *ic1 + c->a2 * v3 + 4096) >> 13;
-    int32_t v2 = *ic2 + ((c->a2 * *ic1 + c->a3 * v3 + 4096) >> 13);
-    int32_t y;
-    *ic1 = clamp(2 * v1 - *ic1, -150000, 150000);
-    *ic2 = clamp(2 * v2 - *ic2, -150000, 150000);
-    y = ty == 0 ? v2 : ty == 1 ? v1 : in - ((k * v1) >> 12) - v2;
-    return soft_knee(y, 16000);
+    return soft_knee(rsvf_run(c, in, ic1, ic2, ty), 16000);
 }
 
 /* ENV 2's amount: the envelope (Q15) x E2AM (0..127), 0..32512 */
@@ -172,14 +167,14 @@ static void a4_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vm
     uint32_t w1 = (uint32_t)p[P_E0] & 3u, w2 = (uint32_t)p[P_E4] & 3u, i, st = (uint32_t)v->s[6];
     uint32_t fst = st & 3u, xst = (st >> 4) & 3u, f2m = (uint32_t)p[AP_F2MD] % 6u, f2ty = f2m % 3u, par = f2m >= 3u;
     uint32_t ds = (uint32_t)p[AP_GDS] % 5u, sync = (uint32_t)p[AP_SYNC] & 1u;
-    int32_t fe, xe, fe15, xe15, zo = 0, zn = 0, pwx = 0, c2x = 0, key, k1, k2, cut1, cut2;
+    int32_t fe, xe, fe15, xe15, zo = 0, zn = 0, pwx = 0, c2x = 0, key, cut1, cut2;
     uint32_t xst2;
     int32_t pw12, l1 = p[AP_LEV1] * 258, l2 = p[AP_LEV2] * 258, ls = p[P_E3] * 258, ln = p[AP_NOIS] * 258;
     int32_t drv = p[AP_DRV], drive = 32768 + drv * 512, ct = p[P_E7] * 2367 / 1000;
     int32_t ic1 = v->s[0], ic2 = v->s[1], jc1 = v->s[2], jc2 = v->s[3], rng = v->s[7];
     int32_t p1o, p1n, p2o, p2n, in1, in2, di1, di2;
     uint32_t ph0 = v->ph[0], ph1 = v->ph[1], ph2 = v->ph[2], pw;
-    tsvf_t f1, f2;
+    rsvf_t f1, f2;
     if (!n)
         return;
     fe = a4_adsr(&p[AP_FA], v->s[4], &fst, v->gate, 0);
@@ -194,12 +189,10 @@ static void a4_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vm
     key = (((m->pitch16 - 960) * 19) >> 1) * p[AP_KEY] / 127;   /* KEY 100 %: half a step a semitone (a step = 256, a semitone ~1.2 steps) */
     pw12 = clamp(p[P_E1] * 32 + pwx + ((m->shape - (64 << 8)) >> 3), 16, 4080);
     pw = (uint32_t)pw12 << 20;
-    k1 = 8192 - p[AP_RES1] * 7600 / 127;
-    k2 = 8192 - p[AP_RES2] * 7600 / 127;
     cut1 = a4_cut(p[AP_CUT1], fe15, p[AP_F1EN], key, m->cutoff);
     cut2 = (p[AP_CUT2] << 8) + key + m->cutoff + c2x;
-    tsvf_coef_k(&f1, cut1, k1);
-    tsvf_coef_k(&f2, cut2, k2);
+    rsvf_coef(&f1, cut1, p[AP_RES1]);
+    rsvf_coef(&f2, cut2, p[AP_RES2]);
     if (ds == A4_E2_UP || ds == A4_E2_DOWN) {          /* the zap falls over the block: its ends are this tick's and the next's */
         zo = a4_xamt(xe15, p[AP_GAM]) * 384 >> 15;     /* up to two octaves, in 1/16 semitone */
         zn = a4_xamt(a4_adsr(&p[AP_GA], xe, &xst2, 1, 1) >> 9, p[AP_GAM]) * 384 >> 15;
@@ -238,12 +231,12 @@ static void a4_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vm
         if (drv)
             s = softclip(((s >> 2) * (drive >> 2)) >> 11);
         s >>= 1;
-        y = a4_flt(&f1, k1, (uint32_t)p[P_FTYPE] % 3u, s, &ic1, &ic2);
+        y = a4_flt(&f1, (uint32_t)p[P_FTYPE] % 3u, s, &ic1, &ic2);
         if (par) {
-            y2 = a4_flt(&f2, k2, f2ty, s, &jc1, &jc2);
+            y2 = a4_flt(&f2, f2ty, s, &jc1, &jc2);
             y = (y + y2) * 23 >> 5;                    /* (-3 dB: two paths) */
         } else {
-            y = a4_flt(&f2, k2, f2ty, y, &jc1, &jc2);
+            y = a4_flt(&f2, f2ty, y, &jc1, &jc2);
         }
         out[i] += voice_amp(clamp(y << 1, -32767, 32767), m, i);
         in1 += di1;
@@ -277,12 +270,14 @@ typedef struct {
     int8_t fa, fd, fs, fr, lev1, lev2, ga, gd, gam, gds, nois, sync, f1en, res1, cut1, drv, f2md, key, res2, cut2, ftype;
 } a4_x_t;
 static const a4_x_t A4_X[NELEM(A4_PRESETS)] = {
-    /* fa fd fs fr lev1 lev2 ga gd gam gds nois sync f1en res1 cut1 drv f2md key res2 cut2 ftype */
-    {0, 55, 30, 30, 127, 100, 0, 0, 127, 0, 0, 0, 70, 40, 100, 10, 0, 127, 0, 127, 0},      /* SAW BASS */
-    {0, 70, 127, 40, 127, 127, 0, 0, 127, 0, 0, 0, 0, 20, 110, 0, 0, 127, 0, 127, 0},       /* PWM LEAD */
-    {0, 60, 80, 40, 127, 100, 0, 0, 127, 0, 0, 1, 40, 30, 100, 0, 0, 127, 0, 127, 0},       /* SYNC LEAD */
-    {0, 50, 0, 25, 127, 127, 0, 0, 127, 0, 0, 0, 90, 90, 95, 20, 0, 127, 0, 127, 0},        /* ACID */
-    {40, 80, 100, 80, 90, 90, 0, 0, 127, 0, 5, 0, 25, 20, 85, 0, 0, 127, 0, 127, 0},        /* WARM PAD */
+    /* fa fd fs fr lev1 lev2 ga gd gam gds nois sync f1en res1 cut1 drv f2md key res2 cut2 ftype. RES is dsp.c rsvf's exponential
+     * scale (Q 0.5 .. 32, self-oscillation from ~118); before 1.x it was linear to Q 7: the old values 20 30 40 are 4 7 9 now,
+     * the ACID's 90 (Q 1.5) a squelchy 70 (Q 6.6) */
+    {0, 55, 30, 30, 127, 100, 0, 0, 127, 0, 0, 0, 70, 9, 100, 10, 0, 127, 0, 127, 0},       /* SAW BASS */
+    {0, 70, 127, 40, 127, 127, 0, 0, 127, 0, 0, 0, 0, 4, 110, 0, 0, 127, 0, 127, 0},        /* PWM LEAD */
+    {0, 60, 80, 40, 127, 100, 0, 0, 127, 0, 0, 1, 40, 7, 100, 0, 0, 127, 0, 127, 0},        /* SYNC LEAD */
+    {0, 50, 0, 25, 127, 127, 0, 0, 127, 0, 0, 0, 90, 70, 95, 20, 0, 127, 0, 127, 0},        /* ACID */
+    {40, 80, 100, 80, 90, 90, 0, 0, 127, 0, 5, 0, 25, 4, 85, 0, 0, 127, 0, 127, 0},         /* WARM PAD */
     {0, 0, 127, 0, 127, 0, 0, 40, 100, 1, 0, 0, 0, 0, 127, 0, 0, 127, 0, 127, 0},           /* KICK */
     {0, 0, 127, 0, 127, 0, 0, 55, 60, 1, 20, 0, 0, 0, 100, 10, 0, 127, 0, 127, 0},          /* ZAP TOM */
     {0, 30, 0, 15, 0, 0, 0, 0, 127, 0, 127, 0, 0, 0, 100, 0, 0, 127, 0, 127, 2},            /* NOISE HAT */

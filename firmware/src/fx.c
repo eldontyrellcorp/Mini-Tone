@@ -18,6 +18,8 @@ static struct {
     uint32_t dly_w, cho_w, cho_ph;
     int32_t dly_lp, dly_acc;             /* the loop's low-pass; HALF: the first sample of the pair being written */
     uint8_t dly_ph, dly_mode;            /* HALF: 0 / 1 the sample of the pair; the line's mode now (0 full rate, 1 half) */
+    uint8_t dly_init;                    /* dly_cur holds the delay time (from the first block on) */
+    uint32_t dly_cur;                    /* the delay time now, Q8 samples: it glides to TIME (a change of TIME, a tempo that moves) */
     uint16_t comb_i[4], ap_i[2];
     int32_t comb_lp[4];
     uint8_t rtype;                       /* the reverb model running (G_RTYPE: 0 ROOM, 1 SPRING, 2 HALL) */
@@ -230,9 +232,19 @@ static uint32_t div_samples(uint32_t div)
 #include "perform.c"                                 /* the FX hold layer's effects (the master) */
 #include "click.c"                                   /* the metronome's click (after the master: audio.c) */
 
+/* G_DTIME (params.c N_DTIME): 0..9 the note values, 10..15 the dotted 1/4 1/8 1/16 1/32 1/2 1/1 (1.5 x), from 16 milliseconds (v - 15) */
+static uint32_t dtime_samples(uint32_t v)
+{
+    static const uint8_t DOT[6] = {0, 1, 2, 3, 6, 7};
+    uint32_t s;
+    if (v >= 16u)
+        return (v - 15u) * (uint32_t)FS / 1000u;
+    s = div_samples(v >= 10u ? DOT[v - 10u] : v);
+    return v >= 10u ? s + (s >> 1) : s;
+}
 static uint32_t delay_samples(void)
 {
-    uint32_t s = div_samples((uint32_t)song.g[G_DTIME]);
+    uint32_t s = dtime_samples((uint32_t)song.g[G_DTIME]);
     return s < 16u ? 16u : s >= DLY_LEN ? DLY_LEN - 1u : s;
 }
 
@@ -691,11 +703,30 @@ static inline int32_t dly_tap_h(uint32_t q)
     return (q & 1u) ? (a + dly_buf[(h + 1u) & (DLY_LEN - 1u)]) >> 1 : a;
 }
 
+/* a tap d samples and f / 256 of one behind the write point w (linear between the two samples; f 0: the sample itself) */
+static inline int32_t dly_tap_f(uint32_t w, uint32_t d, uint32_t f)
+{
+    int32_t a = dly_buf[(w - d) & (DLY_LEN - 1u)], b;
+    if (!f)
+        return a;
+    b = dly_buf[(w - d - 1u) & (DLY_LEN - 1u)];
+    return a + (((b - a) * (int32_t)f) >> 8);
+}
+static inline int32_t dly_tap_hf(uint32_t q, uint32_t d, uint32_t f)       /* the same on the half-rate line (q: full-rate time) */
+{
+    int32_t a = dly_tap_h(q - d), b;
+    if (!f)
+        return a;
+    b = dly_tap_h(q - d - 1u);
+    return a + (((b - a) * (int32_t)f) >> 8);
+}
+#define DLY_SLEW (8 << 8)                /* the delay time moves at most 8 samples a block (1/4 of a sample a sample: a tape's glide) */
+
 /* process the three buses for one block; sends in, wet stereo-equal out (the delay's stereo difference in dly_sd) */
 static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t *rev_in, int32_t *wet,
                      uint32_t n)
 {
-    uint32_t i, dl = delay_samples();
+    uint32_t i, dl, dlf, dl2, dlf2, tgt = delay_samples() << 8;
     int32_t fb = song.g[G_DFDBK] * 230, col = 2000 + song.g[G_DCOLOR] * 240;
     int32_t dmix = song.g[G_DMIX] * 258;
     int32_t cdepth = song.g[G_CDEPTH] * 6, rt;
@@ -707,7 +738,19 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
         fx.dly_lp = fx.dly_acc = 0;
         fx.dly_ph = 0;
         fx.dly_mode = (uint8_t)half;
+        fx.dly_init = 0;
     }
+    if (!fx.dly_init) {                                 /* the first block: the time itself */
+        fx.dly_cur = tgt;
+        fx.dly_init = 1;
+    } else {                                            /* then it glides to TIME (clicks otherwise at every step of a knob) */
+        int32_t d = (int32_t)tgt - (int32_t)fx.dly_cur;
+        fx.dly_cur = (uint32_t)((int32_t)fx.dly_cur + clamp(d, -DLY_SLEW, DLY_SLEW));
+    }
+    dl = fx.dly_cur >> 8;
+    dlf = fx.dly_cur & 255u;
+    dl2 = (fx.dly_cur * 2u) >> 8;
+    dlf2 = (fx.dly_cur * 2u) & 255u;
     pp = fx_dly_pp && (half || dl * 2u < DLY_LEN);
     col2 = col + col - mulq15(col, col);                /* the same cutoff at half the rate */
     dly_st = (uint8_t)pp;
@@ -730,13 +773,13 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
             int32_t t1, t2 = 0, fbx, el, er;
             if (half) {
                 uint32_t q = 2u * fx.dly_w + fx.dly_ph;
-                t1 = dly_tap_h(q - dl);
+                t1 = dly_tap_hf(q, dl, dlf);
                 if (pp)
-                    t2 = dly_tap_h(q - 2u * dl);
+                    t2 = dly_tap_hf(q, dl2, dlf2);
             } else {
-                t1 = dly_buf[(fx.dly_w - dl) & (DLY_LEN - 1u)];
+                t1 = dly_tap_f(fx.dly_w, dl, dlf);
                 if (pp)
-                    t2 = dly_buf[(fx.dly_w - 2u * dl) & (DLY_LEN - 1u)];
+                    t2 = dly_tap_f(fx.dly_w, dl2, dlf2);
             }
             fbx = pp ? t2 : t1;
             if (!half || fx.dly_ph) {                   /* a sample (or a pair of them: HALF) goes into the line */

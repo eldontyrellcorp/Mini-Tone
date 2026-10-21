@@ -449,8 +449,8 @@ int main(void)
                                                 worst = vmax > worst ? vmax : worst;
                                                 over += vmax > 4 * 3 * VOICE_FS;     /* 4 voices x 3 x VOICE_FS */
                                                 for (note_i = 0; note_i < SWM_POLY; note_i++)
-                                                    blow += abs(((swm_slot_t *)ENG_MEM(0))[note_i].ic1) > 400000 ||
-                                                            abs(((swm_slot_t *)ENG_MEM(0))[note_i].ic2) > 400000;
+                                                    blow += abs(((swm_slot_t *)ENG_MEM(0))[note_i].ic1) > (400000 << 8) ||     /* (the state is Q8) */
+                                                            abs(((swm_slot_t *)ENG_MEM(0))[note_i].ic2) > (400000 << 8);
                                                 n++;
                                             } else if (fabs(sum / FS) > dcmax) {
                                                 dcmax = fabs(sum / FS);

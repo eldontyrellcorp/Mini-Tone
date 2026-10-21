@@ -1590,7 +1590,9 @@ static void sweep_columns(void)
                     draw_columns();
                     lint();
                     nsweep++;
-                    if (v - d->min > 300) v = d->max - 1;      /* wide ranges: the ends */
+                    if (d->max - d->min > 300 && v - d->min >= 40)      /* very wide (the delay's TIME, 1502 values: the note values,
+                                                                         * then ms): every 37th after the first 40, and the ends */
+                        v = v + 36 > d->max ? d->max - 1 : v + 36;
                 }
                 *vp = (int16_t)v0;
             }

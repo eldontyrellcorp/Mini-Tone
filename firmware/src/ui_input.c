@@ -925,12 +925,8 @@ static void edit_param(uint32_t slot, int32_t steps)
     d = page_desc(pg, slot, &vp);
     if (!d || !vp || d->max == d->min)
         return;
-    if (vp == &TSEL->p[P_SLEN]) {                         /* LEN: 16, 32, 48 or 64 (a length set elsewhere snaps to the next block) */
-        int32_t blk = (*vp + 15) / 16 + (steps > 0 ? (*vp % 16 ? 0 : 1) : -1);
-        v = clamp(blk, 1, NSTEP / 16) * 16;
-    } else {
-        v = param_turn(d, *vp, accel(EN_K1 + slot, steps, d->fmt == F_ENUM ? 0 : d->max - d->min));
-    }
+    v = param_turn(d, *vp, accel(EN_K1 + slot, steps, d->fmt == F_ENUM ? 0 : d->max - d->min));   /* (LEN too: any length 1 .. 64,
+                                                                                                    * a step a detent, 7 against 16 is a polyrhythm) */
     *vp = (int16_t)v;
     if (pg->scope != SC_GLOBAL) {
         motion_capture(TSEL, (uint32_t)(vp - TSEL->p), *vp);

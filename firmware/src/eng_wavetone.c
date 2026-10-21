@@ -34,8 +34,11 @@
  *
  * EDIT 1 (OSC 1):  WAV1 PD1 LEV1 TUN1       EDIT 2 (OSC 2):  WAV2 PD2 LEV2 TUN2
  * INTERACT:        INTR TABL OFS1 OFS2      UTIL:            DRFT PHAS
- * NOISE:           NTYP NLEV NCUT NDEC
- * The last three pages are track parameters in the operator slots P_FM1_ATK .. P_FM4_LEVEL (the ones DIGITAL used and
+ * NOISE:           NTYP NLEV NCUT NDEC     FILTER:          TYPE CUT RES KEY
+ * FILTER is a resonant multimode filter on the whole voice (dsp.c rsvf: LP BP HP, a Q of up to 32 and, from RES ~122, self-
+ * oscillation: a sine at the cutoff, which KEY 127 and CUT 44 put on the played note), after the oscillators and the
+ * noise; the track's ENV / LFO -> FLT move its CUT. CUT 127, RES 0 and LP leave the voice as it was.
+ * The last pages are track parameters in the operator slots P_FM1_ATK .. P_FM4_LEVEL (the ones DIGITAL used and
  * FMTONE shares: engine_t.tdesc names them; the pages show for WAVETONE only: page_t.own). A factory preset sets them
  * (wvt_track_loaded).
  *
@@ -55,6 +58,10 @@
 #define WP_NLEV P_FM3_DEC        /* noise level */
 #define WP_NCUT P_FM1_SUS        /* noise low-pass (default 127: open) */
 #define WP_NDEC P_FM2_SUS        /* noise decay (default 127: stays) */
+#define WP_FCUT P_FM3_SUS        /* the voice filter (dsp.c rsvf), after the oscillators and the noise: CUT (default 127: open) */
+#define WP_FRES P_FM3_REL        /*   RES (default 0; from ~118 it rings on its own) */
+#define WP_FKEY P_FM3_LEVEL      /*   KEY, the key tracking (default 127: 100 %); P_FTYPE is its TYPE (LP BP HP). CUT 127, RES 0 and */
+                                 /*   LP: no filter (a sound of before 1.x is untouched) */
 
 static const char *const N_WVT_INTR[] = {"OFF", "SYNC", "RING", "FM"};
 static const char *const N_WVT_TABL[] = {"PRIM", "HARM"};
@@ -69,6 +76,7 @@ typedef struct {
     uint32_t nph, pcnt;          /* the digital noise's clock, the pink noise's counter */
     int32_t nenv, ng;            /* the noise's decay envelope (Q24), its gain at the end of the last block (Q15) */
     int32_t ic1, ic2;            /* the noise filter */
+    int32_t fi1, fi2;            /* the voice filter (Q8) */
     int32_t dx1, dy1;            /* the DC blocker: the last input, the output as Q8 */
     int32_t rng;
     uint32_t cnt;                /* notes started: the FREE phase's seed */
@@ -88,6 +96,9 @@ static const param_desc_t WVT_TD[P_FM4_LEVEL - P_FM1_ATK + 1] = {
     [WP_NLEV - P_FM1_ATK] = {"NLEV", F_PCT, 0, 127, 0, 0, 0},
     [WP_NCUT - P_FM1_ATK] = {"NCUT", F_CUTOFF, 0, 127, 127, 0, 0},
     [WP_NDEC - P_FM1_ATK] = {"NDEC", F_TIME, 0, 127, 127, 0, 0},
+    [WP_FCUT - P_FM1_ATK] = {"CUT", F_CUTOFF, 0, 127, 127, 0, 0},
+    [WP_FRES - P_FM1_ATK] = {"RES", F_PCT, 0, 127, 0, 0, 0},
+    [WP_FKEY - P_FM1_ATK] = {"KEY", F_PCT, 0, 127, 127, 0, 0},
 };
 static const param_desc_t *wvt_tdesc(uint32_t id)
 {
@@ -129,6 +140,8 @@ static void wvt_note_on(track_t *t, voice_t *v)
     S->nph = S->pcnt = 0;
     S->ng = 0;
     S->ic1 = S->ic2 = 0;
+    S->fi1 = 0;
+    S->fi2 = rsvf_seed(t->p[WP_FRES]);
     S->dx1 = S->dy1 = 0;
     S->dcnt = (uint16_t)(vi * 61u);
 }
@@ -233,8 +246,11 @@ static void wvt_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const v
     int32_t g1 = clamp(p[P_E2], 0, 127) * 258, g2 = clamp(p[P_E6], 0, 127) * 258, dc1 = 0, dc2 = 0;
     int32_t pt1 = m->pitch16 + clamp(p[P_E3], -24, 24) * 16, pt2 = m->pitch16 + clamp(p[P_E7], -24, 24) * 16;
     uint32_t inc1, inc2, ph1, ph2, clk = 0, r_q8 = 0;
-    int32_t ng0, ng1, dng, dx1, dy1, ic1, ic2;
+    int32_t ng0, ng1, dng, dx1, dy1, ic1, ic2, fi1, fi2;
+    int32_t fcut = clamp(p[WP_FCUT], 0, 127), fres = clamp(p[WP_FRES], 0, 127);
+    uint32_t fty = (uint32_t)p[P_FTYPE] % 3u, fon = fcut < 127 || fres > 0 || fty;
     tsvf_t flt;
+    rsvf_t rf;
     if (!S)
         return;
     if (n > CTL)
@@ -278,8 +294,12 @@ static void wvt_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const v
     ph2 = S->ph[1];
     ic1 = S->ic1;
     ic2 = S->ic2;
+    fi1 = S->fi1;
+    fi2 = S->fi2;
     dx1 = S->dx1;
     dy1 = S->dy1;
+    if (fon)
+        rsvf_coef(&rf, rsvf_key(fcut, m->cutoff, clamp(p[WP_FKEY], 0, 127), m->pitch16), fres);
     for (i = 0; i < n; i++) {
         int32_t s1, s2, acc, nx = 0;
         uint32_t n1 = ph1 + inc1;
@@ -325,6 +345,8 @@ static void wvt_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const v
             dx1 = acc;
             acc = (dy1 + 128) >> 8;
         }
+        if (fon)                                          /* the voice filter: the whole voice, noise too */
+            acc = soft_knee(rsvf_run(&rf, acc >> 1, &fi1, &fi2, fty), 16000) << 1;
         out[i] += voice_amp(acc, m, i);
     }
     S->ph[0] = ph1;
@@ -332,6 +354,8 @@ static void wvt_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const v
     S->ng = ng1;
     S->ic1 = ic1;
     S->ic2 = ic2;
+    S->fi1 = fi1;
+    S->fi2 = fi2;
     S->dx1 = dx1;
     S->dy1 = dy1;
 }
@@ -339,6 +363,7 @@ static void wvt_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const v
 /* ---------------------------------------------------------------------------------------------- presets --- */
 typedef struct {
     int8_t intr, tabl, ofs1, ofs2, drft, phas, ntyp, nlev, ncut, ndec;
+    int8_t fres, fnotc, fnotk, ftype;   /* the filter: RES, 127 - CUT, 127 - KEY, TYPE (zeros: no filter, 100 % key, LP) */
 } wvt_x_t;
 /* wave positions: frame i is at round(i x 127 / 7): 0 18 36 54 73 91 109 127 */
 /* name, {WAV1, PD1, LEV1, TUN1, WAV2, PD2, LEV2, TUN2}, {A D S R}, fenv, mono */
@@ -350,6 +375,11 @@ static const preset_t WVT_PRESETS[] = {
     {"DRIFT PAD", {54, 12, 80, 0, 18, 0, 80, 0}, {80, 90, 110, 95}, 0, 0, FX(0, 55, 25, 70), PAT(5)},
     {"WIND", {0, 0, 0, 0, 0, 0, 0, 0}, {90, 90, 110, 100}, 30, 0, FX(0, 40, 30, 60), PAT(5)},
     {"NOISE HIT", {0, 0, 127, -12, 0, 0, 0, 0}, {0, 62, 0, 40}, 0, 0, FX(0, 20, 30, 40), PAT(2)},
+    /* the resonant filter on the voice: a lead through a Q of 17; a sine from the filter alone, tuned to the key (CUT 44 on C4
+     * at KEY 127) with a quiet oscillator under it; a band-pass wah on the PWM bass (the band-pass is constant skirt: its gain rises with Q) */
+    {"RESO LEAD", {54, 20, 100, 0, 54, 0, 80, 12}, {0, 70, 100, 40}, 40, 1, FX(0, 15, 40, 30), PAT(4)},
+    {"SELF SINE", {0, 0, 40, 0, 0, 0, 0, 0}, {0, 70, 100, 40}, 0, 1, FX(0, 10, 35, 35), PAT(4)},
+    {"WAH BASS", {36, 40, 100, 0, 36, 40, 70, -12}, {0, 78, 30, 25}, 55, 1, FX(10, 0, 10, 10), PAT(2)},
 };
 static const wvt_x_t WVT_X[NELEM(WVT_PRESETS)] = {
     {1, 0, 0, 0, 10, 0, 0, 0, 127, 127},        /* SYNC LEAD */
@@ -359,6 +389,9 @@ static const wvt_x_t WVT_X[NELEM(WVT_PRESETS)] = {
     {0, 0, -9, 9, 70, 1, 1, 25, 90, 127},       /* DRIFT PAD */
     {0, 0, 0, 0, 40, 1, 2, 127, 70, 127},       /* WIND */
     {0, 0, 0, 0, 0, 0, 0, 110, 100, 80},        /* NOISE HIT */
+    {0, 0, 0, 0, 10, 0, 0, 0, 127, 127, 95, 72, 27, 0},    /* RESO LEAD: CUT 55, KEY 100 % */
+    {0, 0, 0, 0, 0, 0, 0, 0, 127, 127, 127, 83, 0, 0},     /* SELF SINE: CUT 44, KEY 127, RES 127 */
+    {0, 0, 0, 8, 5, 0, 0, 0, 127, 127, 90, 91, 0, 1},      /* WAH BASS: BP, CUT 36, KEY 127, RES 90 (Q 8) */
 };
 
 static const engine_t ENG_WAVETONE = {
@@ -402,4 +435,8 @@ static void wvt_track_loaded(track_t *t)
     t->p[WP_NLEV] = x->nlev;
     t->p[WP_NCUT] = x->ncut;
     t->p[WP_NDEC] = x->ndec;
+    t->p[WP_FRES] = x->fres;
+    t->p[WP_FCUT] = 127 - x->fnotc;
+    t->p[WP_FKEY] = 127 - x->fnotk;
+    t->p[P_FTYPE] = x->ftype;
 }

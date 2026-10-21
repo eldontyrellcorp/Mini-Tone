@@ -23,6 +23,7 @@
  *
  * Voice state: ph[0] oscillator 1, ph[1] oscillator 2, s[0] and s[1] the oscillators' decays (Q24), s[2] the pitch
  * envelope (Q24). The levels and the pitch glide linearly over each block: no steps, even in the fastest bend. */
+#define ENGI_DUAL 20u            /* engines.c ENGINES[] (append-only) */
 #define DUAL_POLY 4
 static const char *const N_DUAL_CNFG[] = {
     "S+S", "S+K", "S+T", "S+Z", "S+A", "Z+S", "Z+K", "Z+T", "Z+Z", "Z+A",
@@ -57,11 +58,31 @@ static inline int32_t dual_w2(uint32_t w, uint32_t ph, uint32_t inc)
     }
 }
 
+
+/* the voice filter (dsp.c rsvf), on the operator slots (engine_t.tdesc names them; the FILTER page shows for the engine only):
+ * CUT P_FM1_SUS (default 127: open), RES P_FM1_REL (0), KEY P_FM1_LEVEL (127: 100 percent); P_FTYPE is the TYPE. CUT 127, RES 0
+ * and LP: no filter (the sound is as it was) */
+#define DVC_CUT P_FM1_SUS
+#define DVC_RES P_FM1_REL
+#define DVC_KEY P_FM1_LEVEL
+static const param_desc_t DVC_TD[P_FM4_LEVEL - P_FM1_ATK + 1] = {
+    [DVC_CUT - P_FM1_ATK] = {"CUT", F_CUTOFF, 0, 127, 127, 0, 0},
+    [DVC_RES - P_FM1_ATK] = {"RES", F_PCT, 0, 127, 0, 0, 0},
+    [DVC_KEY - P_FM1_ATK] = {"KEY", F_PCT, 0, 127, 127, 0, 0},
+};
+static const param_desc_t *dual_tdesc(uint32_t id)
+{
+    const param_desc_t *d = &DVC_TD[id - P_FM1_ATK];
+    return d->label ? d : 0;
+}
+
 static void dual_note_on(track_t *t, voice_t *v)
 {
     if ((uint32_t)t->p[P_E4] >= DUAL_RESET_FROM)
         v->ph[0] = v->ph[1] = 0;
     v->s[0] = v->s[1] = v->s[2] = 1 << 24;
+    v->s[4] = 0;                                          /* the voice filter (a retrigger keeps it: engine_t.keep) */
+    v->s[5] = rsvf_seed(t->p[DVC_RES]);
 }
 
 static void dual_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
@@ -73,7 +94,9 @@ static void dual_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const 
     int32_t b1 = 16384, b2 = 16384, l1, l2, d1, d2, bo, bn, tr;
     int32_t p1o, p1n, p2o, p2n;
     uint32_t inc1, inc2, ph0 = v->ph[0], ph1 = v->ph[1];
-    int32_t di1, di2, in1, in2;
+    int32_t di1, di2, in1, in2, fcut = clamp(p[DVC_CUT], 0, 127), fres = clamp(p[DVC_RES], 0, 127), fi1 = v->s[4], fi2 = v->s[5];
+    uint32_t fty = (uint32_t)p[P_FTYPE] % 3u, fon = fcut < 127 || fres > 0 || fty;
+    rsvf_t rf;
     if (!n)
         return;
     e1n = e1o - mulq16(e1o, ENV_EXP[p[P_E2] & 127]);
@@ -100,6 +123,8 @@ static void dual_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const 
     d1 = ((e1n >> 9) - l1) / (int32_t)n;
     d2 = ((e2n >> 9) - l2) / (int32_t)n;
     tr = 32768 + mulq15((beo >> 9), bend * 258);          /* the transient: up to twice the level at the start of a bend */
+    if (fon)
+        rsvf_coef(&rf, rsvf_key(fcut, m->cutoff, clamp(p[DVC_KEY], 0, 127), m->pitch16), fres);
     for (i = 0; i < n; i++) {
         int32_t a1 = mulq15(l1, b1), a2 = mulq15(l2, b2), s, c;
         inc1 = (uint32_t)in1;
@@ -118,6 +143,8 @@ static void dual_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const 
             s = softclip(((s >> 2) * (int32_t)(256 + drive * 50)) >> 6);
         else
             s = clamp(s, -32767, 32767);
+        if (fon)
+            s = soft_knee(rsvf_run(&rf, s >> 1, &fi1, &fi2, fty), 16000) << 1;
         out[i] += voice_amp(s, m, i);
         ph0 += inc1;
         ph1 += inc2;
@@ -131,6 +158,8 @@ static void dual_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const 
     v->s[0] = e1n;
     v->s[1] = e2n;
     v->s[2] = ben;
+    v->s[4] = fi1;
+    v->s[5] = fi2;
 }
 
 /* name, {TUNE, DET, DEC1, DEC2, CNFG, BEND, BAL, OVER}, {A D S R}, fenv, mono */
@@ -143,6 +172,11 @@ static const preset_t DUAL_PRESETS[] = {
     {"FM BASS", {0, 0, 127, 60, 22, 20, 0, 0}, {0, 64, 127, 25}, 0, 1, FX(10, 0, 10, 10), PAT(2)},
     {"F+R GLASS", {0, 7, 110, 90, 30, 0, 0, 0}, {10, 64, 127, 60}, 0, 0, FX(0, 20, 30, 50), PAT(5)},
     {"TOM", {0, 0, 75, 45, 42, 70, 0, 0}, {0, 64, 127, 10}, 0, 0, FX(0, 0, 15, 20), PAT(1)},
+    {"RESO LEAD", {0, 12, 127, 127, 9, 0, 0, 10}, {0, 64, 127, 40}, 30, 1, FX(0, 10, 35, 25), PAT(4)},
+};
+/* the filter of each preset (dual_track_loaded): RES, 127 - CUT, 127 - KEY, TYPE; zeros are the defaults (open, 100 %, LP) */
+static const int8_t DVC_X[NELEM(DUAL_PRESETS)][4] = {
+    [8] = {90, 67, 0, 0},        /* RESO LEAD: Q 7 at CUT 60, the envelope opening it, following the key */
 };
 
 static const engine_t ENG_DUAL = {
@@ -164,4 +198,19 @@ static const engine_t ENG_DUAL = {
     .render = dual_render,
     .knob = {P_E1, P_E4, P_E5, P_E7},
     .poly = DUAL_POLY,
+    .tdesc = dual_tdesc,
+    .keep = 0x30,                /* the voice filter */
 };
+
+/* the preset a track just loaded (ui.c apply_preset_to, tests/hostsim.c): its filter */
+static void dual_track_loaded(track_t *t)
+{
+    const int8_t *x;
+    if (t->eng_req != ENGI_DUAL)
+        return;
+    x = DVC_X[(uint32_t)t->preset % NELEM(DVC_X)];
+    t->p[DVC_RES] = x[0];
+    t->p[DVC_CUT] = 127 - x[1];
+    t->p[DVC_KEY] = 127 - x[2];
+    t->p[P_FTYPE] = x[3];
+}

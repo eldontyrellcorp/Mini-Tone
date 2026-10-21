@@ -1245,6 +1245,9 @@ static void apply_preset_to(track_t *t, uint32_t pi)
     wvt_track_loaded(t);                              /* WAVETONE: the preset's slots */
     fdr_track_loaded(t);                              /* FMDRUM: the preset's slots */
     a4_track_loaded(t);                               /* ANALOG4: the preset's slots */
+    swm_track_loaded(t);                              /* SWARM, CHIP, DUALVCO: the preset's filter (RES, KEY, TYPE, CUT) */
+    chip_track_loaded(t);
+    dual_track_loaded(t);
     load_end(t);
 }
 

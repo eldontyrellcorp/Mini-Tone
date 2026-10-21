@@ -18,7 +18,12 @@
  *                  ANIM  animation depth: each swarm oscillator's detune moves by up to ~+-38 cents at its own
  *                        slow rate (0.17 .. 0.71 Hz)
  *                  NOIS  noise modulation: smoothed random pitch wander of each swarm oscillator, about 25 cents rms at 127 (peaks ~60)
- *                  CUT   a low-pass filter (12 dB, fixed resonance, key-tracked): the track's ENV / LFO -> FLT move it
+ *                  CUT   the filter's cutoff (dsp.c rsvf, below): the track's ENV / LFO -> FLT move it
+ * FILTER:          TYPE  LP (as it was), BP, HP      CUT   (EDIT 2's)      RES   0 = ~Q 0.5, up to Q 32 and, from ~118,
+ *                  self-oscillation (a sine at the cutoff over the swarm)      KEY   the key tracking: 0 = as it was
+ *                  (a fifth of the way: the cutoff follows the key at 21 %), 127 = one to one (CUT 44 rings on C4)
+ *                  RES and KEY are track parameters in the operator slots P_FM1_REL and P_FM1_ATK (engine_t.tdesc names
+ *                  them, the FILTER page shows for SWARM only: page_t.own)
  * The track's ENV / LFO -> SHP (and the matrix's SHP) do nothing here: there is no pulse width.
  *
  * The detune curve is squared (fine control below the middle) and the six offsets are the ratios of the well
@@ -32,6 +37,7 @@
  *
  * Band limiting: SAW and SQR use the polyBLEP of dsp.c (osc_saw, osc_pulse); TRI and SIN have none to need. */
 #define SWM_POLY 4               /* engine_t.poly */
+#define ENGI_SWARM 14u           /* engines.c ENGINES[] (append-only) */
 #define SWM_N 6                  /* swarm oscillators */
 static const char *const N_SWM_WAVE[] = {"SAW", "SQR", "TRI", "SIN"};
 static const char *const N_SWM_OCT[] = {"0", "-1", "-2"};
@@ -55,7 +61,19 @@ static const uint32_t SWM_LRATE[SWM_N] = {16556u, 22400u, 30200u, 39900u, 51600u
 static const uint32_t SWM_START[SWM_N] = {0x1B873593u, 0x9E3779B9u, 0x517CC1B7u, 0xC2B2AE35u, 0x7F4A7C15u, 0xE6546B64u};
 #define SWM_ANIM_MAX 90          /* 1/4096 of the frequency at ANIM 127 (~38 cents) */
 #define SWM_NOIS_MAX 360         /* NOIS 127: ~25 cents rms, peaks ~60 */
-#define SWM_RES 20               /* the filter's resonance (ANALOG's RES scale) */
+#define SWP_RES P_FM1_REL        /* the filter's resonance (default 0) */
+#define SWP_KEY P_FM1_ATK        /* its key tracking, on top of the fifth it always had (default 0) */
+#define SWM_KEY0 27              /* the key tracking before RES and KEY: 4 of 18.7 (1/256 of a knob step a 1/16 semitone) */
+
+static const param_desc_t SWM_TD[P_FM4_LEVEL - P_FM1_ATK + 1] = {
+    [SWP_KEY - P_FM1_ATK] = {"KEY", F_PCT, 0, 127, 0, 0, 0},
+    [SWP_RES - P_FM1_ATK] = {"RES", F_PCT, 0, 127, 0, 0, 0},
+};
+static const param_desc_t *swm_tdesc(uint32_t id)
+{
+    const param_desc_t *d = &SWM_TD[id - P_FM1_ATK];
+    return d->label ? d : 0;
+}
 
 static swm_slot_t *swm_slot_of(track_t *t, voice_t *v)
 {
@@ -79,7 +97,8 @@ static void swm_note_on(track_t *t, voice_t *v)
         S->lph[i] = SWM_START[(i + 3u) % SWM_N] + vi * 0x1F83D9ABu;
         S->nz[i] = 0;
     }
-    S->ic1 = S->ic2 = 0;
+    S->ic1 = 0;
+    S->ic2 = rsvf_seed(t->p[SWP_RES]);
     S->rng = (int32_t)(((v->note + 1u) * 0x9E3779B9u ^ (uint32_t)v->fine * 0x85EBCA6Bu) | 1u);
     v->ph[0] = 0;
 }
@@ -124,9 +143,9 @@ static void swm_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const v
     swm_slot_t *S = swm_slot_of(t, v);
     uint32_t wm = (uint32_t)p[P_E0] & 3u, ws = (uint32_t)p[P_E1] & 3u, oct = (uint32_t)p[P_E2], i, k;
     int32_t dtn = p[P_E3], sw = p[P_E4] * 258, anim = p[P_E5], nmod = p[P_E6];
-    int32_t d, g0, gs, cut, mix[CTL];
-    uint32_t ph0 = v->ph[0], inc0, inc;
-    tsvf_t flt;
+    int32_t d, g0, gs, mix[CTL];
+    uint32_t ph0 = v->ph[0], inc0, inc, fty = (uint32_t)p[P_FTYPE] % 3u;
+    rsvf_t flt;
     int32_t ic1, ic2, rng;
     if (!S)
         return;
@@ -161,22 +180,18 @@ static void swm_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const v
             swm_pass(ws, &S->ph[k], inc + (uint32_t)((int32_t)inc_fine * w), gs, mix, n);
         }
     }
-    /* the filter: ANALOG's low-pass at a fixed RES, key-tracked half way (ANALOG's KTR 64) */
-    cut = (p[P_E7] << 8) + m->cutoff + ((v->pitch16 - 60 * 16) * 4);
-    tsvf_coef(&flt, cut, SWM_RES);
+    /* the filter (dsp.c rsvf): key-tracked a fifth of the way as it always was, more with KEY */
+    rsvf_coef(&flt, rsvf_key(p[P_E7], m->cutoff, SWM_KEY0 + (clamp(p[SWP_KEY], 0, 127) * (127 - SWM_KEY0) >> 7), v->pitch16),
+              clamp(p[SWP_RES], 0, 127));
     ic1 = S->ic1;
     ic2 = S->ic2;
-    for (i = 0; i < n; i++) {
-        /* dsp.c tsvf_lp, rounded: at low cutoffs the floor of its shifts walks the integrators off zero (DC; the
-         * NOISE engine's SVF is rounded for the same reason) */
-        int32_t v3 = (mix[i] >> 1) - ic2;
-        int32_t v1 = (flt.a1 * ic1 + flt.a2 * v3 + 4096) >> 13;
-        int32_t v2 = ic2 + ((flt.a2 * ic1 + flt.a3 * v3 + 4096) >> 13);
-        int32_t y;
-        ic1 = clamp(2 * v1 - ic1, -150000, 150000);
-        ic2 = clamp(2 * v2 - ic2, -150000, 150000);
-        y = soft_knee(v2, 16000) << 1;
-        out[i] += voice_amp(y, m, i) << 1;
+    {   /* SWARM's output stage is twice the others' (a cluster of saws is quiet): the ring would be 6 dB over a note, so from RES 100
+         * the output falls too, to 0.63 at RES 127 (the input already falls to 0.4: dsp.c rsvf_coef) */
+        int32_t og = 4096 - (((4096 - flt.ig) * 5) >> 3);
+        for (i = 0; i < n; i++) {
+            int32_t y = soft_knee(rsvf_run(&flt, mix[i] >> 1, &ic1, &ic2, fty), 16000) << 1;
+            out[i] += voice_amp((y * og) >> 12, m, i) << 1;
+        }
     }
     S->ic1 = ic1;
     S->ic2 = ic2;
@@ -192,6 +207,17 @@ static const preset_t SWARM_PRESETS[] = {
     {"FIZZ ARP", {0, 1, 0, 40, 95, 10, 90, 105}, {0, 62, 0, 40}, 20, 0, FX(0, 20, 40, 30), PAT(13)},
     {"HOOVER", {0, 0, 2, 90, 110, 60, 30, 85}, {6, 85, 110, 60}, 30, 1, FX(25, 30, 20, 40), PAT(4)},
     {"GLASS SWARM", {3, 2, 0, 35, 80, 90, 10, 110}, {40, 90, 100, 90}, 5, 0, FX(0, 40, 30, 65), PAT(5)},
+    /* the resonant filter: a Q of 17 swept by the envelope; the filter alone as a sine, tuned to the key (KEY 127, CUT 44 on C4);
+     * and a zap, the ring falling as the envelope closes the cutoff */
+    {"RESO SWEEP", {0, 0, 0, 40, 90, 30, 0, 35}, {0, 75, 60, 40}, 45, 1, FX(0, 15, 40, 30), PAT(2)},
+    {"SINE RING", {3, 3, 0, 0, 0, 0, 0, 44}, {0, 70, 100, 40}, 0, 1, FX(0, 10, 35, 35), PAT(4)},
+    {"SELF ZAP", {3, 3, 0, 0, 0, 0, 0, 30}, {0, 75, 0, 30}, 60, 0, FX(0, 0, 40, 35), PAT(0)},
+};
+/* the filter of each preset (swm_track_loaded): RES, KEY, TYPE; zeros are the defaults */
+static const int8_t SWM_X[NELEM(SWARM_PRESETS)][3] = {
+    [6] = {95, 64, 0},           /* RESO SWEEP */
+    [7] = {127, 127, 0},         /* SINE RING */
+    [8] = {127, 0, 0},           /* SELF ZAP */
 };
 
 static const engine_t ENG_SWARM = {
@@ -211,7 +237,20 @@ static const engine_t ENG_SWARM = {
     .npresets = NELEM(SWARM_PRESETS),
     .note_on = swm_note_on,
     .render = swm_render,
+    .tdesc = swm_tdesc,
     .knob = {P_E3, P_E4, P_E5, P_E7},
     .poly = SWM_POLY,
     .mem = sizeof(swm_slot_t) * SWM_POLY,
 };
+
+/* the preset a track just loaded (ui.c apply_preset_to, tests/hostsim.c): its filter's RES, KEY and TYPE */
+static void swm_track_loaded(track_t *t)
+{
+    const int8_t *x;
+    if (t->eng_req != ENGI_SWARM)
+        return;
+    x = SWM_X[(uint32_t)t->preset % NELEM(SWM_X)];
+    t->p[SWP_RES] = x[0];
+    t->p[SWP_KEY] = x[1];
+    t->p[P_FTYPE] = x[2];
+}

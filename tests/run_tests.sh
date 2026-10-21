@@ -349,6 +349,10 @@ if [ -f build/gen/felucca_tables.h ]; then
     run "FMTONE: ratios, carriers per algorithm, MIX, modulation, A / B envelopes (DEL ATK DEC END), FB, HARM, TRK, FTO / DTN, 6-voice cap, descriptors, corners (DC, headroom), level, determinism, cost" "$OUT/fmtone_test"
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/sid_test" tests/sid_test.c -lm
     run "SID: pitch of TRI / SAW / PULSE, SYNC, NOISE, LP / HP, corners (level), determinism, presets" "$OUT/sid_test"
+    $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/rsvf_test" tests/rsvf_test.c -lm
+    run "RSVF: the resonant filter of SWARM / FMTONE / WAVETONE / CHIP / DUALVCO / ANALOG4: shapes, Q, self-oscillation on the cutoff at every pitch, bounded, KEY, each engine's CUT / RES / KEY / TYPE" "$OUT/rsvf_test"
+    $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/poly_test" tests/poly_test.c -lm
+    run "POLY: tracks of LEN 7 / 16, 15 / 4, 5 / 3, 1 / 64 cycle on their own and meet every lcm steps" "$OUT/poly_test"
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/chip_test" tests/chip_test.c -lm
     run "CHIP: static waves, the arpeggiator (offsets, the first 0, SPD in Hz and divisions, single-shot), tables, pulse widths, DEC, OVER, corners, determinism, presets" "$OUT/chip_test"
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/dual_test" tests/dual_test.c -lm
@@ -364,7 +368,7 @@ if [ -f build/gen/felucca_tables.h ]; then
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/elek_rev_test" tests/elek_rev_test.c -lm
     run "ELEK REVERB: PRE, the reverb time (DEC, INF), the shelf (FRQ, GAIN), HPF / LPF, VOL, stereo, level against HALL, bounded, determinism" "$OUT/elek_rev_test"
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/delay_test" tests/delay_test.c -lm
-    run "DELAY: ping-pong echoes (left, right, left, right), even decay, mono when two times do not fit the line" "$OUT/delay_test"
+    run "DELAY: ping-pong echoes, even decay, mono when two times do not fit; TIME dotted values and ms, the knob, the display, the glide" "$OUT/delay_test"
     $CC -O1 -w -Ibuild/gen -Ifirmware/src -Itests -o "$OUT/fmtone_project_test" tests/fmtone_project_test.c -lm
     run "FMTONE through the project store: negative FTO kept, clamped to its own range (TP's for other engines)" "$OUT/fmtone_project_test"
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/wavetone_test" tests/wavetone_test.c -lm

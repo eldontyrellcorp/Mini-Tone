@@ -28,6 +28,8 @@ static uint8_t eng_mem_owner[NPART];       /* engine index + 1 whose state is in
 #endif
 #if FELUCCA_SWARM
 #include "eng_swarm.c"          /* SWARM: seven-oscillator super-saw cluster (4 voices a part) */
+#else
+static void swm_track_loaded(track_t *t) { (void)t; }
 #endif
 #if FELUCCA_FMTONE
 #include "eng_fmtone.c"         /* FMTONE: four-operator FM (C, A, B1, B2), after Elektron's FM TONE (6 voices a part) */
@@ -49,9 +51,13 @@ static void fdr_track_loaded(track_t *t) { (void)t; }
 #endif
 #if FELUCCA_CHIP
 #include "eng_chip.c"           /* CHIP: after the Syntakt's SY CHIP: a waveform axis (static, animated, tables, pulse) and an arpeggiator of 4 notes (4 voices a part) */
+#else
+static void chip_track_loaded(track_t *t) { (void)t; }
 #endif
 #if FELUCCA_DUAL
 #include "eng_dual.c"           /* DUALVCO: after the Syntakt's SY DUAL VCO: two oscillators with decays, mix / ring / FM, bend, overdrive (4 voices a part) */
+#else
+static void dual_track_loaded(track_t *t) { (void)t; }
 #endif
 #if FELUCCA_ANA4
 #include "eng_ana4.c"           /* ANALOG4: after Elektron's Analog Four: two oscillators, sub, noise, two filters, two envelopes (4 voices a part) */

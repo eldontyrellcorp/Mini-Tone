@@ -495,6 +495,9 @@ static void engine_block(track_t *t)
     eng_mem_claim(t);                                   /* (an engine set directly: power-on, a test) */
     for (i = 0; i < 8u; i++)                            /* the engine's own values, for a later fade */
         t->pe_old[i] = t->p[P_E0 + i];
+    for (i = 0; i < 20u; i++)
+        t->ps_old[i] = t->p[P_FM1_ATK + i];
+    t->ps_old[20] = t->p[P_FTYPE];
 }
 
 /* ENV SYNC (1.5, #175; P_ESYNC, params.c ESYNC_NAMES): ATK DEC REL as note values of the tempo (BPM, or the external
@@ -619,18 +622,25 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
     bend16 = bend >= 0 ? bend / 16 : -((-bend + 15) / 16);
     bend_fine = (bend - bend16 * 16) * 2367 / 2560;
     uint32_t nr = 0, fade = t->xf_on && t->xf;
-    int16_t pe_new[8];
+    int16_t pe_new[8], ps_new[21];
     for (i = 0; i < n; i++)
         out[i] = 0;
     if (mod.on && mod.ldep < 32767)                     /* the matrix's DEPTH (mod.c) */
         lfo = mulq15(lfo, mod.ldep);
     if (spread_on)
         spread_clear();
-    if (fade)                                           /* engine switch: the old engine, its own values */
+    if (fade) {                                         /* engine switch: the old engine, its own values */
         for (i = 0; i < 8u; i++) {
             pe_new[i] = t->p[P_E0 + i];
             t->p[P_E0 + i] = t->pe_old[i];
         }
+        for (i = 0; i < 20u; i++) {                     /* (and its operator slots, the filter's CUT RES KEY, and TYPE) */
+            ps_new[i] = t->p[P_FM1_ATK + i];
+            t->p[P_FM1_ATK + i] = t->ps_old[i];
+        }
+        ps_new[20] = t->p[P_FTYPE];
+        t->p[P_FTYPE] = t->ps_old[20];
+    }
     track_lfo_tick(t);
     esync_coef(t);                                      /* this block's envelope steps for env_tick (ENV SYNC) */
     if (e->block)                                       /* the engine's per-part work (WHEEL: bars, rotor) */
@@ -693,6 +703,9 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
     if (fade) {
         for (i = 0; i < 8u; i++)
             t->p[P_E0 + i] = pe_new[i];
+        for (i = 0; i < 20u; i++)
+            t->p[P_FM1_ATK + i] = ps_new[i];
+        t->p[P_FTYPE] = ps_new[20];
         t->xf--;
     }
     return nr;
