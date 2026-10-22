@@ -19,6 +19,12 @@ it changes:
   with a **TIME** of 16 note values (4BAR to 1/32, triplets, and the dotted 1/1D 1/2D 1/4D 1/8D 1/16D 1/32D) and then **1 to 1486 ms** off the
   grid (the tempo does not move them); the time glides to a new TIME (8 samples a block, a tape's glide) instead of clicking
 - **The ELEK reverb** (FX > REVERB TYPE ELEK, pages ELEK REV and ELEK REV 2: PRE DEC FRQ GAIN HPF LPF VOL)
+- **A shared resonant filter** in the Elektron engines (SWARM, FMTONE, WAVETONE, CHIP, DUALVCO, ANALOG4): CUT, RES and KEY, TYPE LP / BP / HP, up to
+  self-oscillation that follows the keys (Engines, below)
+- **Sloop 2.8's sequencer features**, ported onto Mini-Tone's own steps: a **sheet** on SEQ > STEP and the drum grid (hold OCT+), per-note
+  PITCH / LEN / FORCE / RATCH, **FILL** conditions with GLO fill keys, nudge in 64ths of a step, a roll **zoom** of 8 to 64 steps, MOVE / COPY / DELETE of a note
+  with its locks, and the playing section's letter on HOME > TRACKS (Controls and Features, below)
+- **FMTONE's algorithm diagram**: a small chart of the 8 algorithms on its EDIT pages, as FM6 has
 - **LEN any length, 1 to 64**, a step a detent (the knob went in blocks of 16): 7 against 16, 15 against 4 are polyrhythms, each track cycling on its own
   (tests/poly_test.c); themes by MENU > DISPLAY > COLOR
 - MIDI IN: CH1-6, SEL, CH5-10, CH9-14, CH13-16 (the block of channels the six tracks follow)
@@ -29,14 +35,14 @@ it changes:
   PAD, PLUCK, KEYS, DRUM, FX, OTHER) to browse by
 - **Six tracks**, one synth part each with its own engine and sound (drums are the DRUM engine);
   8 voices shared between them (tracks 5 and 6 are saved in a flash extension of each project slot). ALGORITHM selects the track on every page
-- **Sequencer:** 64 steps per track with chords, ties, accent, slide, per-step chance, velocity and ratchets
-  (a step played 2, 3 or 4 times in its length); a piano roll of the steps, where KNOB 3 sets a note's length; a drum grid (white keys =
+- **Sequencer:** 64 steps per track with chords, ties, accent, slide, per-step chance, velocity, a force for each note
+  (ghost, soft, normal, hard), fill conditions and ratchets (a step, or each note of it, played 2, 3 or 4 times in its length); a piano roll of the steps, where KNOB 3 sets a note's length; a drum grid (white keys =
   steps, black keys = lanes); automation: recording of knob moves per step (an automation icon marks the cards it
   drives); live loop recording with overdub; step recording at the cursor (REC on SEQ > STEP while stopped), one
   chord at a time or note by note (MENU > CHORD ENTRY ADD); divisions listed by length, 4 bars to 1/32; loading a
   sound never touches your patterns
-- **Timing:** live recording keeps when you played each note, as a per-step **NUDGE** (1/16 of a step, half a step
-  early to 7/16 late); the track's **QUANTIZE** decides what plays: ON (the default) every step on the grid, as
+- **Timing:** live recording keeps when you played each note, as a per-step **NUDGE** (1/64 of a step, half a step
+  early to 31/64 late; the AUTOMATION list and the web editor set it in sixteenths); the track's **QUANTIZE** decides what plays: ON (the default) every step on the grid, as
   always, OFF your own timing. Nudges can also be set by hand
 - **Parameter locks and the AUTOMATION list:** hold a step on SEQ > STEP (or the drum grid) and turn a knob to set
   that parameter for that step only; EDIT with the step held clears its locks. **SEQ > AUTOMATION** is one list of
@@ -381,6 +387,9 @@ For more details, see [On AI-Assisted Development and Responsibility](https://gi
 - PHYS engine: models ported from [DaisySP](https://github.com/electro-smith/DaisySP) by Electrosmith and Emilie Gillet ([MIT](LICENSES/MIT-DaisySP.txt)) and from Emilie Gillet's [eurorack](https://github.com/pichenettes/eurorack) code ([MIT](LICENSES/MIT-Rings.txt))
 - FM6 engine: msfa from [Dexed](https://github.com/asb2m10/dexed) by Google Inc. and Pascal Gauthier ([Apache-2.0](LICENSES/Apache-2.0-msfa.txt))
 - Browser emulator: after [X0X](https://github.com/charlesvestal/fm1-x0x) by [charlesvestal](https://github.com/charlesvestal) (GPL-3.0), a Felucca fork whose browser build showed the way
+- SID engine: [reSID](https://github.com/simonowen/resid) 0.16 by Dag Lem (Simon Owen's fork), GPL-2.0-or-later, ported to integer C (`firmware/src/eng_sid.c`)
+- Sequencer sheet, fills and per-note editing: after [SLOOP](https://github.com/isod89/sloop-fm1) 2.8 by isod89 (GPL-3.0), itself a Felucca fork
+  (its NOTES page after Melodee by [keremimo](https://github.com/keremimo))
 - Package format and boot files: [JieLi AC79 SDK](https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK) ([Apache-2.0](LICENSES/Apache-2.0.txt); three of its files are in every package, none in this tree)
 - Contributions: [keremimo](https://github.com/keremimo) (white-key scales, #2), [ChanceTheMaker](https://github.com/ChanceTheMaker)
   (TRS MIDI, bend, sustain and clock, palettes, favourites, editor display settings: #8, #10, #11, #12),
