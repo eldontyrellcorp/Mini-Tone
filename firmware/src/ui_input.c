@@ -777,12 +777,151 @@ static void nudge_turn(uint64_t held, int32_t steps)
     ui_message(b);
 }
 
+/* ---- the note's sheet (ui.c: SHEET_N): KNOB 1 the row, KNOB 2 its value (MOVE: a step a detent); OCT+ tapped: SLIDE
+ * on / off, COPY (the copy just after it, then MOVE moves it), DELETE. One undo per turn or action (SAVE held) */
+static uint32_t layer_held(void);
+static int sheet_page(void)
+{
+    const page_t *pg = cur_page();
+    return !ui.home && !ui.menu && !ui.confirm && !name_on() && !act_cols() && !ui.ml.on && song.seq_mode &&
+           pg->graph == GR_ROLL && pg->scope == SC_STEP && !drum_track(TSEL) && !layer_held();
+}
+static void sheet_knob(uint32_t slot, int32_t steps)
+{
+    track_t *t = TSEL;
+    uint32_t row = ui.sheet - 1u, i = note_start(t, ui.cursor);
+    if (slot == 0u) {
+        ui.sheet = (uint8_t)(1 + clamp((int32_t)row + steps, 0, 5));
+        return;
+    }
+    if (slot != 1u)
+        return;
+    if (i == NSTEP) {
+        ui_message("NO NOTE");
+        return;
+    }
+    if (row > 3u)
+        return;                                         /* (COPY and DELETE: OCT+) */
+    step_undo_take(t, 0x4000u + row);                   /* (a knob turned on: one undo) */
+    switch (row) {
+    case 0:
+        t->step[i].flags = (uint8_t)(steps > 0 ? t->step[i].flags | SF_SLIDE : t->step[i].flags & ~SF_SLIDE);
+        break;
+    case 1:
+        step_set_nudge(&t->step[i], clamp(step_nudge(&t->step[i]) + (steps > 0 ? 1 : -1), -8, 7));
+        if (t->p[P_SQNT])
+            ui_message("QUANTIZE IS ON");
+        break;
+    case 2:
+        step_set_force(&t->step[i], (uint32_t)clamp((int32_t)step_force(&t->step[i]) + (steps > 0 ? 1 : -1), FO_GHOST, FO_ACC));
+        break;
+    default: {
+        int32_t n = steps;
+        while (n) {
+            int32_t to = note_shift(t, i, n, 0);
+            if (to < 0) {
+                ui_message("NO ROOM");
+                break;
+            }
+            i = (uint32_t)to;
+            cursor_set(to);
+            n += n > 0 ? -1 : 1;
+        }
+        break;
+    }
+    }
+    motion_undo_done(t);
+    sync_reload = 1;
+}
+static void sheet_do(void)                              /* OCT+ tapped with the sheet open */
+{
+    track_t *t = TSEL;
+    uint32_t row = ui.sheet - 1u, i = note_start(t, ui.cursor);
+    if (row != 0u && row < 4u)
+        return;
+    if (i == NSTEP) {
+        ui_message("NO NOTE");
+        return;
+    }
+    if (chain_busy()) {
+        ui_message("STOP TO EDIT");
+        return;
+    }
+    step_undo_take(t, 0);
+    if (row == 0u) {
+        t->step[i].flags ^= SF_SLIDE;
+    } else if (row == 4u) {
+        int32_t to = note_shift(t, i, 1, 1);
+        if (to < 0) {
+            ui_message("NO ROOM");
+            motion_undo_done(t);
+            return;
+        }
+        cursor_set(to);
+        ui.sheet = 4;                                   /* (MOVE: KNOB 2 moves the copy) */
+        ui_message("COPIED");
+    } else {
+        note_del(t, i);
+        cursor_fix();
+        ui.sheet = 0;
+        ui_message("NOTE DELETED");
+    }
+    motion_undo_done(t);
+    sync_reload = 1;
+    ui.force = 1;
+}
+/* OCT+ on the STEP page: a tap acts on release (the octave, as before; the sheet's action with it open), a hold (0.4 s)
+ * opens the sheet. Returns pressed without OCT+ while it is down. OCT- meanwhile: both, the octave back to 0 as before */
+static uint32_t sheet_oct(uint32_t pressed)
+{
+    static uint8_t down;
+    static uint32_t t0;
+    uint32_t ub = 1u << panel.btn[B_OCTUP], dn = 1u << panel.btn[B_OCTDN];
+    if (!sheet_page()) {
+        down = 0;
+        ui.sheet = 0;
+        return pressed;
+    }
+    if (pressed & ub) {
+        down = 1;
+        t0 = fm1_ms;
+        pressed &= ~ub;
+    }
+    if (down == 1u && (fm1_in.buttons & dn)) {
+        down = 0;
+        pressed |= ub;                                  /* (both: as before) */
+    } else if (down && !(fm1_in.buttons & ub)) {
+        if (down == 1u) {                               /* tapped */
+            if (ui.sheet)
+                sheet_do();
+            else if (song.octave < 3)
+                song.octave++;
+        }
+        down = 0;
+    } else if (down == 1u && fm1_ms - t0 >= 400u) {
+        down = 2;
+        if (!ui.sheet)
+            ui.sheet = 1;
+        ui.force = 1;
+    }
+    if (ui.sheet && (pressed & dn)) {                   /* OCT- closes it */
+        ui.sheet = 0;
+        pressed &= ~dn;
+        ui.force = 1;
+    }
+    return pressed;
+}
+
 static void step_edit(uint32_t slot, int32_t steps)
 {
     step_t *st = &TSEL->step[ui.cursor];
     uint32_t i;
     if (drum_track(TSEL)) {
         grid_edit(slot, steps);
+        return;
+    }
+    if (ui.sheet) {
+        sheet_knob(slot, steps);
         return;
     }
     switch (slot) {
@@ -1283,6 +1422,7 @@ static void ui_input(void)
         pressed &= ~(1u << panel.btn[B_OCTUP]);
         ui_message("KEPT");
     }
+    pressed = sheet_oct(pressed);                       /* (STEP: OCT+ held opens the note's sheet) */
     home = btn_hold(&ui.home_t0, B_HOME, now, 1);
     rec = btn_hold(&ui.rec_t0, B_REC, now, 0);          /* (a tap; held, the REC layer: ui_layer.c) */
     save = btn_hold(&ui.save_t0, B_SAVE, now, !ui.menu && !ui.confirm);   /* held: UNDO (ui.c undo_swap) */

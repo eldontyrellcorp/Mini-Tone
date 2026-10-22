@@ -57,6 +57,7 @@
 # RATCH (tests/ratchet_test.c): a step's ratchet (x1..x4): its parts in the sequencer (equal, gated, chords and drum
 #                   hits whole, one chance roll, swing, no slide or tie out, STOP), FUN8 round trip and older projects x1,
 #                   user preset patterns, SEQ > AUTOMATION's RATCH rows and the roll / grid drawing.
+# SHEET (tests/sheet_test.c): SEQ > STEP's note sheet, after SLOOP 2.8 (OCT+ held opens it; its rows act on the note under the cursor).
 # STEP 1.5 (tests/step15_test.c, #178 #173): SEQ > STEP's KNOB 3 LEN on a note (clean TIEs written after it and taken
 #                   back, stopping at the next note and at LEN, chords, undo, TIME elsewhere, the DRUM grid untouched,
 #                   the longer note played), a step's VEL as it plays (96 by default, ACC 127, drum hits) and
@@ -251,6 +252,8 @@ if [ -f build/gen/felucca_tables.h ]; then
     run "RATCH: x1..x4 in a step (notes, chords, drum hits), gates, chance, swing, projects, user presets, AUTOMATION RATCH rows" "$OUT/ratchet_test"
     $CC -O1 -w -Ibuild/gen -Ifirmware/src -o "$OUT/step15_test" tests/step15_test.c -lm
     run "1.5 STEP: a note's LEN (TIEs on KNOB 3), a step's VEL (playback, AUTOMATION's VEL rows)" "$OUT/step15_test"
+    $CC -O1 -w -Ibuild/gen -Ifirmware/src -o "$OUT/sheet_test" tests/sheet_test.c -lm
+    run "STEP: the note's sheet (OCT+ held: SLIDE, NUDGE, FORCE, MOVE, COPY, DELETE, locks and TIEs with the note, undo)" "$OUT/sheet_test"
     $CC -O1 -w -Ibuild/gen -Ifirmware/src -o "$OUT/fun10_test" tests/fun10_test.c -lm
     run "1.2 (FUN10): LFO 2 SYNC / TRIG / POL, NUDGE (record, QUANTIZE, play, controls), 128 motion records, FUN10 / FUN9 / FUN8 / FUN7, user presets" "$OUT/fun10_test"
     $CC -O1 -w -Ibuild/gen -Ifirmware/src -o "$OUT/midi_control_test" tests/midi_control_test.c -lm

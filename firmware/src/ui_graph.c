@@ -254,6 +254,45 @@ static void graph_roll(const track_t *t, uint16_t c)
         }
     }
 }
+/* the note's sheet over the roll (ui.sheet, ui_input.c sheet_knob): six rows (ui.c SHEET_N), the one KNOB 1 picks a THEME
+ * bar with INK text, its value on the right; the note it acts on is the one under the cursor */
+#define SH_X 112
+#define SH_Y 6
+#define SH_W 124
+#define SH_RH 16
+static void graph_sheet(const track_t *t)
+{
+    uint32_t k, i = note_start(t, ui.cursor);
+    int32_t ty = HALF_UP(SH_RH - AF_S_CAP_H);
+    cv_rrect(SH_X - 1, SH_Y - 1, SH_W + 2, 6 * SH_RH + 4, 5, T_RULE, T_SURF);
+    cv_rrect(SH_X, SH_Y, SH_W, 6 * SH_RH + 2, 4, T_BG, T_RULE);
+    for (k = 0; k < 6u; k++) {
+        int32_t ry = SH_Y + 1 + (int32_t)k * SH_RH;
+        int sel = k + 1u == ui.sheet;
+        char v[8];
+        const char *vs = "";
+        uint16_t bg = sel ? T_THEME : T_BG;
+        v[0] = 0;
+        if (i != NSTEP && k == 0u)
+            vs = t->step[i].flags & SF_SLIDE ? "ON" : "OFF";
+        else if (i != NSTEP && k == 1u) {
+            int32_t n = step_nudge(&t->step[i]);
+            fmt_int(v + (n > 0), n);
+            if (n > 0)
+                v[0] = '+';
+            vs = v;
+        } else if (i != NSTEP && k == 2u)
+            vs = FORCE_N[step_force(&t->step[i])];
+        if (sel)
+            cv_rrect(SH_X + 2, ry, SH_W - 4, SH_RH - 1, 3, T_THEME, T_BG);
+        GFX_HOOK_ALIGN(0, ry + ty, 0, ry + ty + AF_S_CAP_H, AL_V, "note sheet row text centred");
+        cv_text_on(SH_X + 7, ry + ty - AF_S_CAP_Y, &AF_S, SHEET_N[k], sel ? T_INK : T_MID, bg);
+        if (vs[0]) {
+            GFX_HOOK_ALIGN(0, ry + ty, 0, ry + ty + AF_S_CAP_H, AL_V, "note sheet value centred");
+            cv_text_on(SH_X + SH_W - 7 - text_w(&AF_S, vs), ry + ty - AF_S_CAP_Y, &AF_S, vs, sel ? T_INK : T_TEXT, bg);
+        }
+    }
+}
 /* SEQ > STEP on a DRUM track: the grid, 8 lanes x the 16 steps of the page shown. Lanes by their two-letter
  * names (BD SD CP CH OH TM RS CB; CG CL CY on the other kits). A hit is a rounded square (accented: the
  * accent; a RATCH step's: its 2..4 parts as bars), an empty step a dot (brighter on the beats and on the selected lane); the selected lane is
@@ -1154,6 +1193,7 @@ static uint32_t graph_signature(void)
         uint32_t ph = song.playing ? t->seq_idx : 0xFFFFu;
         if (ph / 16u != ui.bank)
             ph = 0xFFFFu;                            /* the roll shows the cursor's bank only */
+        h ^= ui.sheet * 977u;
         h ^= steps_hash(t) + ph * 31u + ui.cursor * 7919u + ui.lane * 104723u + ui.bank * 613u +
              drum_mute[trk_index(t) % NPART] * 2654435761u;
         {                                            /* the parameter locks' marks (the roll, the grid) */
@@ -2181,7 +2221,11 @@ static void draw_graph(void)
             if (drum_track(t))
                 graph_grid(t, c);
             else
+            {
                 graph_roll(t, c);
+                if (ui.sheet)
+                    graph_sheet(t);
+            }
             break;
         case GR_SCALE:
             graph_scale(t, c);

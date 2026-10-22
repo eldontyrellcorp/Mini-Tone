@@ -755,7 +755,7 @@ enum { S_HOME, S_HOME_IDLE, S_MESSAGE, S_MESSAGE_KEY, S_PRESETS, S_PRESETS_NOFAV
        S_INSERT_CRUSH, S_INSERT_FOLD, S_INSERT_PHASER, S_INSERT_OFF, S_INSERT_MIX,
        S_ENV_SYNC, S_ENV_DEST_SYNC, S_FILTER,
        S_LEARN_WAIT, S_LEARN_PICK, S_LEARN_SET, S_LEARN_LONG, S_GLO_LEARN, S_MENU_LCLEAR, S_MENU_LCLEAR_NONE, S_REVERB_ELEK, S_REVERB_ELEK2,
-       S_HOME_T6, S_MIXER_T6, S_SONG_SIX, S_COUNT };
+       S_HOME_T6, S_MIXER_T6, S_SONG_SIX, S_ROLL_SHEET, S_ROLL_SHEET_FORCE, S_ROLL_SHEET_NONE, S_COUNT };
 static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "message", "message_key", "presets", "presets_nofav", "user",
     "phrases", "project", "tools", "song_empty", "song", "step", "auto_steps", "auto_add_chance", "automation", "drum",
     "drum_hand", "drum_cym", "mixer", "mixer_from_home", "mixer_pan", "env", "env_dest", "lfo", "mod", "fx", "slicer", "dly", "scl", "chord", "chord_wide", "chord_off", "chord_kit", "arp",
@@ -780,7 +780,7 @@ static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "message", "mes
     "menu_tune", "menu_info", "home_tracks", "home_tracks_stopped", "home_tracks_hot", "menu_home", "home_levels", "help_home", "help_user", "help_grid", "help_lfo", "layer_glo_help", "layer_seq_help", "menu_help",
     "insert_crush", "insert_fold", "insert_phaser", "insert_off", "insert_mix",
     "env_sync", "env_dest_sync", "filter",
-    "learn_wait", "learn_pick", "learn_set", "learn_long", "layer_glo_learn", "menu_learn_clear", "menu_learn_clear_none", "reverb_elek", "reverb_elek2", "home_track6", "mixer_track6", "song_six"};
+    "learn_wait", "learn_pick", "learn_set", "learn_long", "layer_glo_learn", "menu_learn_clear", "menu_learn_clear_none", "reverb_elek", "reverb_elek2", "home_track6", "mixer_track6", "song_six", "roll_sheet", "roll_sheet_force", "roll_sheet_none"};
 
 /* the STEP page's piano roll (ui_graph.c graph_roll) on track 1, stopped unless said: an empty pattern; ACID in
  * A minor; POLY chords (Am7 F C G, tied); a line with ties, slides and accents in C major; LEN 32 on its second
@@ -1391,6 +1391,15 @@ static void setup(int s)
         break;
     case S_ROLL_EMPTY: case S_ROLL_ACID: case S_ROLL_CHORDS: case S_ROLL_TIES: case S_ROLL_LEN32: case S_ROLL_HIGH:
     case S_ROLL_LOW: case S_ROLL_WIDE: case S_ROLL_PLAYING: case S_ROLL_LEN: roll_scene(s); break;
+    /* the note's sheet (OCT+ held on SEQ > STEP): over the ACID roll, a note with a nudge and an accent (every row's
+     * value), the cursor on an empty step (no values), the FORCE row picked */
+    case S_ROLL_SHEET: case S_ROLL_SHEET_FORCE: case S_ROLL_SHEET_NONE:
+        roll_scene(S_ROLL_ACID);
+        step_set_nudge(&TSEL->step[6], -3);
+        TSEL->step[6].flags |= SF_SLIDE;
+        if (s == S_ROLL_SHEET_NONE) ui.cursor = 1;
+        ui.sheet = (uint8_t)(s == S_ROLL_SHEET_FORCE ? 3 : 1);
+        break;
     /* 1.1 parameter locks (ui_input.c lock_*): the roll's steps with a lock marked under them; a step held (the note
      * key of its entry) shows what KNOB 1..4 lock (HOME's: ANALOG E5 E6 ATK REL), the locked ones bright; the DRUM grid
      * with its marks over the steps; a step key held after FX (DIST CHO DLY REV, REV and DLY locked); AUTOMATION's

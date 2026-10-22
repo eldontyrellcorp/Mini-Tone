@@ -139,6 +139,7 @@ static struct {
     uint8_t bank;                /* SEQ: 16-step bank (follows the cursor) */
     uint8_t cursor;              /* SEQ: step being edited (STEP page KNOB 1 moves it) */
     uint8_t entry_open;          /* SEQ: keys held since the first press of this entry */
+    uint8_t sheet;               /* SEQ > STEP (a melodic track): the note's sheet (OCT+ held) open: 1 + its row, 0 closed */
     uint8_t lane;                /* SEQ > STEP on a DRUM track (the grid): the lane the keys and KNOB 3 / 4 edit */
     uint8_t plk_src;             /* parameter locks (ui_input.c lock_*): the sound page whose KNOB 1..4 a step held
                                   * locks, PAGES index + 1; 0 = HOME's four */
@@ -505,6 +506,7 @@ static void page_entered(void)
         ui.plk_src = (uint8_t)(ui.page + 1u);
     song.seq_mode = !ui.home && pg->fam == FAM_SEQ;
     ui.entry_open = 0;
+    ui.sheet = 0;
     ui.hot_t = 0;                                /* clear the previous page's emphasis */
     ui.act = pg->graph == GR_USER ? 4u : 0u;     /* the save screen is ready for OCT+ */
     help_start();
@@ -545,6 +547,90 @@ static uint32_t note_set_len(track_t *t, uint32_t i, uint32_t want)
         t->step[i + n].time = ST_TIE;
     }
     return n;
+}
+
+/* ---- the note's sheet (after SLOOP 2.8's NOTES sheet, GPL-3.0; SLOOP keeps its own steps, so does this firmware):
+ * SEQ > STEP on a melodic track, OCT+ held (0.4 s): six rows over the roll, KNOB 1 picks one, KNOB 2 sets its value,
+ * OCT+ tapped does the SLIDE / COPY / DELETE, OCT- closes. They act on the note under the cursor (a TIE: the note
+ * before it): its step, TIEs, nudge, chance, force and parameter locks go together. FORCE is the step's velocity
+ * (GHOST SOFT NORM HARD) or its accent */
+static const char *const SHEET_N[6] = {"SLIDE", "NUDGE", "FORCE", "MOVE", "COPY", "DELETE"};
+static const char *const FORCE_N[5] = {"GHOST", "SOFT", "NORM", "HARD", "ACC"};
+enum { FO_GHOST, FO_SOFT, FO_NORM, FO_HARD, FO_ACC };
+static const uint8_t FORCE_VEL[4] = {40, 64, 0, 118};          /* (0: the default, 96) */
+static uint32_t step_force(const step_t *s)
+{
+    if (s->flags & SF_ACCENT)
+        return FO_ACC;
+    return s->vel && s->vel <= 48u ? FO_GHOST : s->vel && s->vel <= 80u ? FO_SOFT : s->vel > 108u ? FO_HARD : FO_NORM;
+}
+static void step_set_force(step_t *s, uint32_t f)
+{
+    s->flags = (uint8_t)(f == FO_ACC ? s->flags | SF_ACCENT : s->flags & ~SF_ACCENT);
+    if (f != FO_ACC)
+        s->vel = FORCE_VEL[f > FO_HARD ? FO_HARD : f];
+}
+/* the first step of the note the step i belongs to (a TIE: the note before it), NSTEP: none there */
+static uint32_t note_start(const track_t *t, uint32_t i)
+{
+    while (i && t->step[i].time == ST_TIE)
+        i--;
+    return step_on(&t->step[i]) ? i : NSTEP;
+}
+static int step_free(const track_t *t, uint32_t i)       /* nothing there: no note, no hit, no TIE */
+{
+    return !t->step[i].n && !t->step[i].hit && t->step[i].time != ST_TIE;
+}
+/* the parameter locks of step `from` go to step `to` (copy: they stay there too) */
+static void lock_shift(track_t *t, uint32_t from, uint32_t to, int copy)
+{
+    uint8_t id[16];
+    int16_t v[16];
+    uint32_t i, n = 0, place = trk_index(t) << 6 | from;
+    for (i = 0; i < motion.count && n < 16u; i++)
+        if (motion.event[i].place == place && (motion.event[i].param & MOTION_LOCK)) {
+            id[n] = (uint8_t)MOTION_ID(&motion.event[i]);
+            v[n++] = motion.event[i].value;
+        }
+    for (i = 0; i < n; i++) {
+        if (!copy)
+            motion_delete_event(t, from, id[i]);
+        motion_set_lock(t, to, id[i], v[i]);
+    }
+}
+/* the note at i (its TIEs and locks with it) one step on (dir 1) or back (-1), or (copy) a copy of it just after it; the
+ * steps it goes to must be free and inside LEN. Returns where it is now, or -1 */
+static int32_t note_shift(track_t *t, uint32_t i, int32_t dir, int copy)
+{
+    uint32_t len = (uint32_t)clamp(t->p[P_SLEN], 1, NSTEP), n = note_len(t, i), j, to;
+    if (i >= NSTEP || !step_on(&t->step[i]))
+        return -1;
+    to = copy ? i + n : dir > 0 ? i + 1u : i - 1u;
+    if ((!copy && dir < 0 && i == 0u) || to + n > len)
+        return -1;
+    for (j = 0; j < n; j++)
+        if ((to + j < i || to + j >= i + n) && !step_free(t, to + j))
+            return -1;
+    if (copy) {
+        for (j = 0; j < n; j++)
+            t->step[to + j] = t->step[i + j];
+    } else if (dir > 0) {
+        for (j = n; j > 0; j--)
+            t->step[i + j] = t->step[i + j - 1u];
+        step_clear(&t->step[i]);
+    } else {
+        for (j = 0; j < n; j++)
+            t->step[i - 1u + j] = t->step[i + j];
+        step_clear(&t->step[i + n - 1u]);
+    }
+    lock_shift(t, i, to, copy);
+    return (int32_t)to;
+}
+static void note_del(track_t *t, uint32_t i)             /* the note, its TIEs and its locks */
+{
+    note_set_len(t, i, 1);
+    step_clear(&t->step[i]);
+    motion_clear_locks(t, i);
 }
 
 /* ------------------------------------------------------- the DRUM grid --- */

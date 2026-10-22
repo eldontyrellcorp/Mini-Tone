@@ -115,6 +115,12 @@ it changes:
   knob for a MOMENTARY change
 - Double-tap a layer's button to keep its layer open without holding; tap it again to close
 - On SEQ > STEP, hold a step and turn KNOB 1–4 to lock those parameters on that step (PRESETS: its NUDGE)
+- On SEQ > STEP (a melodic track), hold OCT+ for 0.4 s for the **note's sheet**, after [SLOOP](https://github.com/isod89/sloop-fm1) 2.8's: six rows over the roll,
+  KNOB 1 picks one, KNOB 2 sets it. **SLIDE** on / off, **NUDGE** a sixteenth of a step a detent (-8..+7; it plays with the
+  track's QUANTIZE off), **FORCE** GHOST / SOFT / NORM / HARD (the step's velocity) or ACC, **MOVE** the note a step on or back (its
+  TIEs, chance, nudge, force and parameter locks go with it, onto free steps only). OCT+ tapped in the sheet toggles SLIDE, **COPY**s the
+  note just after itself (then MOVE moves the copy) or **DELETE**s the note, its TIEs and locks; OCT− closes it. They act on the note
+  under the cursor (on a TIE, the note before it); one undo per turn (SAVE held). OCT+ tapped is the octave as before, on release
 - On action pages and in dialogs, OCT+ does it and OCT− goes back; in the menu, OCT+ / OCT− change the value and HOME closes it
 - Save a sound: stop, tap SAVE, pick a slot with KNOB 1, then OCT+ and OCT+ again (name it with the keys)
 
