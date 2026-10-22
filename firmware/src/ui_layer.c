@@ -8,8 +8,8 @@
  *              steps that key through NONE and the effects (it holds the new one at once), EDIT puts the key's default
  *              back; kept with the settings (fx_keys) when the layer closes
  *   GLO  SET   black keys 1..4 (F#3 G#3 A#3 C#4) T1..T4 MUTE (latched; lit = sounding), F3..B3 SOLO T1..T4 while
- *              held (HOLD cells, a corner triangle), C4 UNMUTE ALL, D4 MIDI LEARN on / off (1.5, midi_learn.c), F4 TAP
- *              tempo; KNOB 1..4 T1..T4 LEVEL;
+ *              held (HOLD cells, a corner triangle), C4 UNMUTE ALL, D4 MIDI LEARN on / off (1.5, midi_learn.c), E4 FILL while held (SLOOP's:
+ *              the steps with a FILL / NO FILL condition), D#4 FILL NEXT BAR, F4 TAP tempo; KNOB 1..4 T1..T4 LEVEL;
  *              GLO + PLAY: from the top without stopping
  *   SCL  SET   any key: its note name is ROOT; KNOB 1..4 ROOT SCL CHRD VOIC (LY_SCL: the SCL page's first two,
  *              the CHORD page's two; QNT TRN stay on SCL); the LEDs show the root lit and the scale's notes breathing
@@ -618,6 +618,10 @@ static void layer_key(uint32_t l, uint32_t k)
         if (key_black(k)) {
             if (p < NWIN)
                 trk[win_base() + p].p[P_MUTE] = (int16_t)!trk[win_base() + p].p[P_MUTE];
+            else if (p == NWIN) {                        /* D#4: FILL NEXT BAR (again: cancelled; seq.c fill_arm) */
+                fill_arm = (uint8_t)!fill_arm;
+                ui_message(fill_arm ? "FILL: NEXT BAR" : "FILL BAR OFF");
+            }
         } else if (p < NWIN) {
             lys.solo |= 1u << k;                        /* (layer_masks: perf_solo while held) */
         } else if (p == 4u) {
@@ -659,6 +663,13 @@ static void layer_keys(uint32_t keys)
     if (lys.eqh)
         eqa_release();
     lys.solo &= kb_layer;
+    {   /* GLO + E4 held: a fill while it is (steps with a condition: seq.c step_plays); anywhere else not */
+        uint32_t f = 0;
+        for (k = 0; l == LAYER_GLO && k < 27u; k++)
+            if (((kb_layer >> k) & 1u) && !key_black(k) && key_place(k) == 6u)
+                f = 1;
+        fill_held = (uint8_t)f;
+    }
     for (k = 0; k < 27u; k++)
         if ((lys.solo >> k) & 1u)
             s |= 1u << (win_base() + key_place(k));
@@ -806,8 +817,8 @@ static uint32_t layer_leds(uint32_t *br)
             can = e < PF_N && ((ok >> e) & 1u);
             on = can && ((held >> e) & 1u);
         } else if (l == LAYER_GLO) {                    /* sounding lit; SOLO held lit, the others, C4, F4 breathe */
-            on = b ? p < NWIN && glo_sounding(win_base() + p) : (p < NWIN && ((lys.solo >> k) & 1u)) || (p == 5u && ui.ml.on);
-            can = !b && (p < NWIN || p == 4u || p == 5u || (p == 7u && !song.g[G_CLOCK]));
+            on = b ? (p < NWIN && glo_sounding(win_base() + p)) || (p == NWIN && fill_arm) : (p < NWIN && ((lys.solo >> k) & 1u)) || (p == 5u && ui.ml.on) || (p == 6u && fill_held);
+            can = b ? p == NWIN : (p < NWIN || p == 4u || p == 5u || p == 6u || (p == 7u && !song.g[G_CLOCK]));
         } else if (l == LAYER_SCL) {                    /* the root lit, the scale's notes breathe */
             e = (k + 5u + 12u - root) % 12u;
             on = e == 0u;
@@ -968,6 +979,8 @@ static void layer_glo(void)
     lcell(LC_X(0), 50, LC_H, n, ICON_MUTE, 0, "ALL", LS_OFF, 0);   /* (unmute all) */
     n[0] = 'D';
     lcell(LC_X(1), 50, LC_H, n, ICON_MIDI, 0, "LEARN", ui.ml.on ? LS_SEL : LS_OFF, 0);   /* (MIDI LEARN, 1.5) */
+    n[0] = 'E';
+    lcell(LC_X(2), 50, LC_H, n, ICON_LOOP, 0, "FILL", fill_held ? LS_HELD : fill_arm ? LS_SEL : LS_OFF, 1);   /* (held; D#4: next bar) */
     n[0] = 'F';
     lcell(LC_X(3), 50, LC_H, n, ICON_TEMPO, 0, "TAP", song.g[G_CLOCK] ? LS_DIM : LS_OFF, 0);
     for (e = 0; e < NWIN; e++) {                        /* the black keys 1..4: MUTE, latched */

@@ -3621,7 +3621,7 @@ static int test_quick_layers(void)
     a = leds_at(0); b2 = leds_at(250);
     ok &= ((a & b2) >> black(0)) & 1u && !(((a | b2) >> black(1)) & 1u);           /* T1 sounding lit, T2 muted dark */
     ok &= ((a ^ b2) >> white(0)) & 1u && ((a ^ b2) >> white(7)) & 1u && ((a ^ b2) >> white(5)) & 1u &&   /* (D4: LEARN) */
-          !(((a | b2) >> white(6)) & 1u);
+          ((a ^ b2) >> white(6)) & 1u && ((a ^ b2) >> black(4)) & 1u;   /* (E4: FILL, D#4: FILL NEXT BAR: breathe) */
     key_up(black(1)); btn_up(B_GLO); frame();
     bad += check("GLO + black key 2: T2 MUTE latched (SET), silent, no MIDI; LEDs: sounding lit, muted dark", ok &&
                  trk[1].p[P_MUTE] == 1 && !ui.layer);

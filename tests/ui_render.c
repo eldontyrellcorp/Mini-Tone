@@ -755,7 +755,8 @@ enum { S_HOME, S_HOME_IDLE, S_MESSAGE, S_MESSAGE_KEY, S_PRESETS, S_PRESETS_NOFAV
        S_INSERT_CRUSH, S_INSERT_FOLD, S_INSERT_PHASER, S_INSERT_OFF, S_INSERT_MIX,
        S_ENV_SYNC, S_ENV_DEST_SYNC, S_FILTER,
        S_LEARN_WAIT, S_LEARN_PICK, S_LEARN_SET, S_LEARN_LONG, S_GLO_LEARN, S_MENU_LCLEAR, S_MENU_LCLEAR_NONE, S_REVERB_ELEK, S_REVERB_ELEK2,
-       S_HOME_T6, S_MIXER_T6, S_SONG_SIX, S_ROLL_SHEET, S_ROLL_SHEET_FORCE, S_ROLL_SHEET_NONE, S_COUNT };
+       S_ROLL_SHEET, S_ROLL_SHEET_FORCE, S_ROLL_SHEET_NONE, S_ROLL_SHEET_CHORD, S_ROLL_SHEET_LAST, S_ROLL_ZOOM8, S_ROLL_ZOOM32,
+       S_ROLL_ZOOM64, S_DRUM_SHEET, S_DRUM_SHEET_LAST, S_GLO_FILL, S_GLO_FILL_ARMED, S_HOME_TRACKS_SECTION, S_HOME_T6, S_MIXER_T6, S_SONG_SIX, S_COUNT };
 static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "message", "message_key", "presets", "presets_nofav", "user",
     "phrases", "project", "tools", "song_empty", "song", "step", "auto_steps", "auto_add_chance", "automation", "drum",
     "drum_hand", "drum_cym", "mixer", "mixer_from_home", "mixer_pan", "env", "env_dest", "lfo", "mod", "fx", "slicer", "dly", "scl", "chord", "chord_wide", "chord_off", "chord_kit", "arp",
@@ -780,7 +781,8 @@ static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "message", "mes
     "menu_tune", "menu_info", "home_tracks", "home_tracks_stopped", "home_tracks_hot", "menu_home", "home_levels", "help_home", "help_user", "help_grid", "help_lfo", "layer_glo_help", "layer_seq_help", "menu_help",
     "insert_crush", "insert_fold", "insert_phaser", "insert_off", "insert_mix",
     "env_sync", "env_dest_sync", "filter",
-    "learn_wait", "learn_pick", "learn_set", "learn_long", "layer_glo_learn", "menu_learn_clear", "menu_learn_clear_none", "reverb_elek", "reverb_elek2", "home_track6", "mixer_track6", "song_six", "roll_sheet", "roll_sheet_force", "roll_sheet_none"};
+    "learn_wait", "learn_pick", "learn_set", "learn_long", "layer_glo_learn", "menu_learn_clear", "menu_learn_clear_none", "reverb_elek", "reverb_elek2", "roll_sheet", "roll_sheet_force", "roll_sheet_none", "roll_sheet_chord", "roll_sheet_last", "roll_zoom8", "roll_zoom32",
+    "roll_zoom64", "drum_sheet", "drum_sheet_last", "layer_glo_fill", "layer_glo_fill_next", "home_tracks_section", "home_track6", "mixer_track6", "song_six"};
 
 /* the STEP page's piano roll (ui_graph.c graph_roll) on track 1, stopped unless said: an empty pattern; ACID in
  * A minor; POLY chords (Am7 F C G, tied); a line with ties, slides and accents in C major; LEN 32 on its second
@@ -802,6 +804,7 @@ static void roll_scene(int s)
     uint32_t i;
     song.sel = 0; t = TSEL;
     song.playing = 0;
+    ui.zoom = 0; ui.sheet = 0; ui.note_k = 0;
     track_defaults_steps(t);
     t->p[P_SLEN] = 16;
     go_page(GR_ROLL);
@@ -927,6 +930,10 @@ static void setup(int s)
     memset(kb_chn, 0, sizeof kb_chn);               /* no key held (roll_playing holds one) */
     state();
     memset(drum_mute, 0, sizeof drum_mute);          /* (1.4.1: no DRUM lane muted) */
+    ui.zoom = 0; ui.sheet = 0; ui.note_k = 0;        /* (the sheet and the roll's zoom: their own scenes) */
+    if (s > S_ROLL_ZOOM8 - 1) trk[0].p[P_SLEN] = 16;   /* (the zoom scenes' LEN 64 stays out of the scenes after them) */
+    fill_held = fill_arm = 0;
+    memset(chain.lane, 0, sizeof chain.lane);       /* (HOME_TRACKS_SECTION's letters) */
     switch (s) {
     case S_HOME: song.octave = 2; song.rec = 1; usb.config = 1; break;
     case S_HOME_IDLE: song.playing = 0; song.batt_raw = 570; ui.hot_col = 1; ui.hot_t = 30; break;
@@ -1393,12 +1400,39 @@ static void setup(int s)
     case S_ROLL_LOW: case S_ROLL_WIDE: case S_ROLL_PLAYING: case S_ROLL_LEN: roll_scene(s); break;
     /* the note's sheet (OCT+ held on SEQ > STEP): over the ACID roll, a note with a nudge and an accent (every row's
      * value), the cursor on an empty step (no values), the FORCE row picked */
-    case S_ROLL_SHEET: case S_ROLL_SHEET_FORCE: case S_ROLL_SHEET_NONE:
+    case S_ROLL_SHEET: case S_ROLL_SHEET_FORCE: case S_ROLL_SHEET_NONE: case S_ROLL_SHEET_CHORD: case S_ROLL_SHEET_LAST:
         roll_scene(S_ROLL_ACID);
-        step_set_nudge(&TSEL->step[6], -3);
+        step_set_micro(&TSEL->step[6], -13);
         TSEL->step[6].flags |= SF_SLIDE;
+        if (s == S_ROLL_SHEET_CHORD || s == S_ROLL_SHEET_LAST) {   /* a chord: per-note force and ratchet */
+            step_t *st = &TSEL->step[8];
+            static const uint8_t CH[3] = {57, 60, 64};
+            step_put(st, ST_NOTE, 0, 3, CH);
+            step_set_lvl(st, 0, LV_GHOST); step_set_lvl(st, 2, LV_HARD); step_set_nrat(st, 1, 1); step_set_nrat(st, 2, 2);
+            step_set_fill(st, FC_FILL);
+            ui.cursor = 8; ui.note_k = 1;
+        }
         if (s == S_ROLL_SHEET_NONE) ui.cursor = 1;
-        ui.sheet = (uint8_t)(s == S_ROLL_SHEET_FORCE ? 3 : 1);
+        ui.sheet = (uint8_t)(s == S_ROLL_SHEET_FORCE ? SR_FORCE + 1 : s == S_ROLL_SHEET_CHORD ? SR_RATCH + 1 :
+                             s == S_ROLL_SHEET_LAST ? SR_DEL + 1 : SR_NOTE + 1);
+        break;
+    case S_DRUM_SHEET: case S_DRUM_SHEET_LAST:           /* the grid's sheet over the hit of lane 2 at step 5 */
+        drum(0); go_page(GR_ROLL); ui.cursor = 4; ui.lane = 1; trk[3].seq_idx = 9;
+        step_set_micro(&trk[3].step[4], 5); step_set_fill(&trk[3].step[4], FC_NOFILL);
+        ui.sheet = (uint8_t)(s == S_DRUM_SHEET ? DR_RATCH + 1 : DR_DEL + 1);
+        break;
+    case S_GLO_FILL: case S_GLO_FILL_ARMED:               /* GLO: E4 FILL held / D#4 next bar armed */
+        go_home(); ui.layer = LAYER_GLO;
+        if (s == S_GLO_FILL) fill_held = 1; else fill_arm = 1;
+        break;
+    case S_HOME_TRACKS_SECTION:                         /* a song playing: each track's section letter */
+        tracks_scene(1);
+        chain.lane[0] = 0; chain.lane[1] = 2; chain.lane[2] = 1; chain.lane[3] = 3;
+        break;
+    case S_ROLL_ZOOM8: case S_ROLL_ZOOM32: case S_ROLL_ZOOM64:
+        roll_scene(S_ROLL_ACID);
+        TSEL->p[P_SLEN] = 64;                        /* (setup puts it back to 16 for the next scene) */
+        ui.zoom = (int8_t)(s == S_ROLL_ZOOM8 ? -1 : s == S_ROLL_ZOOM32 ? 1 : 2);
         break;
     /* 1.1 parameter locks (ui_input.c lock_*): the roll's steps with a lock marked under them; a step held (the note
      * key of its entry) shows what KNOB 1..4 lock (HOME's: ANALOG E5 E6 ATK REL), the locked ones bright; the DRUM grid

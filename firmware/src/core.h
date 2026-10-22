@@ -352,6 +352,20 @@ static void step_set_nrat(step_t *s, uint32_t k, uint32_t v)
     uint32_t sh = 2u * (k & 3u);
     s->rat = (uint8_t)((s->rat & ~(3u << sh)) | (v & 3u) << sh);
 }
+/* note k out of the step (the ones above it move down, with their force and ratchet) */
+static uint32_t drop2(uint32_t v, uint32_t k) { return (v & ((1u << (2u * k)) - 1u)) | ((v >> (2u * k + 2u)) << (2u * k)); }
+static void step_drop_note(step_t *s, uint32_t k)
+{
+    uint32_t j;
+    if (k >= s->n || k >= 4u)
+        return;
+    for (j = k; j + 1u < 4u; j++)
+        s->note[j] = s->note[j + 1u];
+    s->note[3] = 0;
+    s->lvl = (uint8_t)drop2(s->lvl, k);
+    s->rat = (uint8_t)drop2(s->rat, k);
+    s->n--;
+}
 static uint32_t step_fill(const step_t *s) { return (s->fx & 3u) == 3u ? FC_NORM : (uint32_t)(s->fx & 3u); }
 static void step_set_fill(step_t *s, uint32_t v) { s->fx = (uint8_t)((s->fx & ~3u) | (v > 2u ? 0u : v)); }
 /* SLOOP's micro timing: a step's nudge in 1/MICRO_DIV of the step, -32..+31 (a quarter of NUDGE's sixteenth: the

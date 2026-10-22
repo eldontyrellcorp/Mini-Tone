@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
-/* SEQ > STEP's note sheet (ui.c note_shift / step_force, ui_input.c sheet_*, ui_graph.c graph_sheet), after SLOOP 2.8's NOTES
+/* SEQ > STEP's note sheet (ui.c note_shift / note_force, ui_input.c sheet_*, ui_graph.c graph_sheet), after SLOOP 2.8's NOTES
  * sheet, on the real UI sources (with the stubs of tests/ui_test.c):
  *   OPEN    OCT+ held 0.4 s opens the sheet, a tap is the octave as before (on release), OCT- closes it (no octave),
  *           the drum grid and other pages have none
@@ -10,6 +10,8 @@
  *   COPY    OCT+: a copy just after it (TIEs, nudge, force, locks), the sheet on MOVE for it; DELETE: the note, its TIEs and
  *           locks, the sheet closes
  *   UNDO    one undo per turn or action (SAVE held)
+ *   DRUM    the grid's sheet (ACC, RATCH, NUDGE, FILL, MOVE, COPY, DELETE for the lane's hit)
+ *   GLO     E4 held: a fill; D#4: the next bar's
  * Built and run by tests/run_tests.sh. */
 #define UI_TEST_NO_MAIN 1
 #include "ui_test.c"
@@ -82,41 +84,140 @@ static int open_close(void)
 static int rows(void)
 {
     int bad = 0, ok;
+    static const uint8_t CH[3] = {60, 64, 67};
     track_t *t = roll(2);
+    step_t *st;
     put(t, 2, 60, ST_NOTE);
-    t->step[2].vel = 90;
     open_sheet();
     close_up();
+    sheet_row(SR_SLIDE);
     turn(EN_K2, 1);
     ok = (t->step[2].flags & SF_SLIDE) != 0u;
     turn(EN_K2, -1);
     ok &= !(t->step[2].flags & SF_SLIDE);
     press(B_OCTUP);
-    ok &= (t->step[2].flags & SF_SLIDE) != 0u && ui.sheet == 1u;
+    ok &= (t->step[2].flags & SF_SLIDE) != 0u && ui.sheet == SR_SLIDE + 1u;
     press(B_OCTUP);
     ok &= !(t->step[2].flags & SF_SLIDE);
     bad += check("ROWS: SLIDE on / off with KNOB 2, toggled by OCT+", ok);
-    sheet_row(1);
+    sheet_row(SR_NUDGE);
     turn(EN_K2, 1);
     turn(EN_K2, 1);
-    ok = step_nudge(&t->step[2]) == 2;
-    for (int i = 0; i < 20; i++)
+    turn(EN_K2, 1);
+    ok = step_micro(&t->step[2]) == 3 && step_nudge(&t->step[2]) == 0;
+    for (int i = 0; i < 40; i++)
         turn(EN_K2, -1);
-    ok &= step_nudge(&t->step[2]) == -8;
-    bad += check("  NUDGE: a sixteenth a detent, -8 .. +7", ok);
-    sheet_row(2);
-    ok = step_force(&t->step[2]) == FO_NORM;
+    ok &= step_micro(&t->step[2]) == -32;
+    bad += check("  NUDGE: a 64th of the step a detent, -32 .. +31", ok);
+    t->step[2] = (step_t){{0}};
+    put(t, 2, 60, ST_NOTE);
+    t->step[2].n = 3;
+    t->step[2].note[1] = CH[1];
+    t->step[2].note[2] = CH[2];
+    st = &t->step[2];
+    sheet_row(SR_NOTE);
     turn(EN_K2, 1);
-    ok &= step_force(&t->step[2]) == FO_HARD && t->step[2].vel > 108u;
+    ok = ui.note_k == 1u;
+    turn(EN_K2, 5);
+    ok &= ui.note_k == 2u;
+    sheet_row(SR_PITCH);
+    turn(EN_K2, 2);
+    ok &= st->note[2] == 69 && st->note[0] == 60 && st->note[1] == 64;
+    bad += check("  NOTE picks a note of the chord, PITCH moves that one alone", ok);
+    sheet_row(SR_FORCE);
+    ok = note_force(st, 2) == FRC_NORM;
     turn(EN_K2, 1);
-    ok &= step_force(&t->step[2]) == FO_ACC && (t->step[2].flags & SF_ACCENT) && t->step[2].vel > 108u;
+    ok &= note_force(st, 2) == FRC_HARD && step_lvl(st, 2) == LV_HARD && step_lvl(st, 0) == LV_NORM;
+    turn(EN_K2, 1);
+    ok &= note_force(st, 2) == FRC_ACC && (st->flags & SF_ACCENT) && step_lvl(st, 2) == LV_HARD;
     turn(EN_K2, -1);
     turn(EN_K2, -1);
     turn(EN_K2, -1);
-    ok &= step_force(&t->step[2]) == FO_SOFT && !(t->step[2].flags & SF_ACCENT);
+    ok &= note_force(st, 2) == FRC_SOFT && !(st->flags & SF_ACCENT) && step_lvl(st, 2) == LV_SOFT && !step_lvl(st, 1);
     turn(EN_K2, -1);
-    ok &= step_force(&t->step[2]) == FO_GHOST && t->step[2].vel <= 48u && t->step[2].vel > 0u;
-    bad += check("  FORCE: GHOST SOFT NORM HARD, ACC the accent (a velocity kept), the others without it", ok);
+    ok &= note_force(st, 2) == FRC_GHOST;
+    bad += check("  FORCE: that note's GHOST SOFT NORM HARD, ACC the step's accent; the other notes untouched", ok);
+    sheet_row(SR_RATCH);
+    turn(EN_K2, 1);
+    turn(EN_K2, 1);
+    ok = step_nrat(st, 2) == 2u && !step_nrat(st, 0);
+    turn(EN_K2, 1);
+    turn(EN_K2, 1);
+    ok &= step_nrat(st, 2) == 3u;
+    for (int i = 0; i < 5; i++)
+        turn(EN_K2, -1);
+    ok &= step_nrat(st, 2) == 0u;
+    bad += check("  RATCH: that note's own x2 .. x4 (- the step's)", ok);
+    sheet_row(SR_FILL);
+    turn(EN_K2, 1);
+    ok = step_fill(st) == FC_FILL;
+    turn(EN_K2, 1);
+    ok &= step_fill(st) == FC_NOFILL;
+    turn(EN_K2, 1);
+    ok &= step_fill(st) == FC_NOFILL;
+    turn(EN_K2, -1);
+    turn(EN_K2, -1);
+    turn(EN_K2, -1);
+    ok &= step_fill(st) == FC_NORM;
+    bad += check("  FILL: NORMAL, FILL, NO FILL", ok);
+    t = roll(2);
+    put(t, 2, 60, ST_NOTE);
+    open_sheet();
+    close_up();
+    sheet_row(SR_LEN);
+    turn(EN_K2, 2);
+    ok = note_len(t, 2) == 3u && t->step[3].time == ST_TIE && t->step[4].time == ST_TIE;
+    turn(EN_K2, -1);
+    ok &= note_len(t, 2) == 2u;
+    bad += check("  LEN: the note and its TIEs, as KNOB 3 on the page", ok);
+    ui.cursor = 9;
+    frame();
+    sheet_row(SR_PITCH);
+    ok = t->step[9].n == 0u;
+    turn(EN_K2, 1);
+    ok &= t->step[9].n == 1u && t->step[9].time == ST_NOTE;
+    bad += check("  PITCH on an empty step: a note there (your last one)", ok);
+    return bad;
+}
+
+static int zoom_del(void)
+{
+    int bad = 0, ok;
+    static const uint8_t CH[3] = {60, 64, 67};
+    track_t *t = roll(2);
+    put(t, 2, 60, ST_NOTE);
+    t->step[2].n = 3;
+    t->step[2].note[1] = CH[1];
+    t->step[2].note[2] = CH[2];
+    step_set_lvl(&t->step[2], 1, LV_GHOST);
+    step_set_lvl(&t->step[2], 2, LV_HARD);
+    step_set_nrat(&t->step[2], 2, 1);
+    open_sheet();
+    close_up();
+    sheet_row(SR_NOTE);
+    turn(EN_K2, 1);
+    sheet_row(SR_DEL);
+    press(B_OCTUP);
+    ok = t->step[2].n == 2u && t->step[2].note[0] == 60 && t->step[2].note[1] == 67 && step_lvl(&t->step[2], 0) == LV_NORM &&
+         step_lvl(&t->step[2], 1) == LV_HARD && step_nrat(&t->step[2], 1) == 1u && !ui.sheet && msg_is("NOTE DELETED");
+    bad += check("DELETE on a chord: the picked note only, the others' force and ratchet moved down with them", ok);
+    t = roll(2);
+    put(t, 2, 60, ST_NOTE);
+    open_sheet();
+    close_up();
+    ok = ui.zoom == 0;
+    turn(EN_PRESET, 1);
+    ok &= ui.zoom == 1 && pr_nv() == 32u;
+    turn(EN_PRESET, 1);
+    turn(EN_PRESET, 1);
+    ok &= ui.zoom == 2 && pr_nv() == 64u;
+    turn(EN_PRESET, -1);
+    turn(EN_PRESET, -1);
+    turn(EN_PRESET, -1);
+    turn(EN_PRESET, -1);
+    ok &= ui.zoom == -1 && pr_nv() == 8u && ui.cursor == 2u;
+    bad += check("ZOOM: PRESETS with the sheet open: 8, 16, 32, 64 steps on the roll, the cursor stays", ok);
+    ui.zoom = 0;
     return bad;
 }
 
@@ -135,7 +236,7 @@ static int moves(void)
     memcpy(ref, t->step, sizeof ref);
     open_sheet();
     close_up();
-    sheet_row(3);
+    sheet_row(SR_MOVE);
     turn(EN_K2, 1);
     ok = ui.cursor == 4u && t->step[4].n == 1u && t->step[4].note[0] == 60 && t->step[4].probability == 40 &&
          step_nudge(&t->step[4]) == 3 && t->step[5].time == ST_TIE && t->step[6].time == ST_TIE &&
@@ -157,7 +258,7 @@ static int moves(void)
     ok &= ui.cursor == 0u && msg_is("NO ROOM");
     bad += check("  back, and stopped at the first step", ok);
     ui.msg_t = 0;
-    sheet_row(3);
+    sheet_row(SR_MOVE);
     frames(2000);
     hold(B_SAVE);
     ok = !memcmp(t->step, ref, sizeof ref) && motion_find(t, 3, P_ATK) >= 0 && motion_find(t, 0, P_ATK) < 0;
@@ -171,20 +272,20 @@ static int copy_delete(void)
     track_t *t = roll(2);
     put(t, 2, 62, ST_NOTE);
     put(t, 3, 0, ST_TIE);
-    step_set_force(&t->step[2], FO_SOFT);
+    note_force_set(&t->step[2], 0, FRC_SOFT);
     motion_set_lock(t, 2, P_ATK, 9);
     open_sheet();
     close_up();
-    sheet_row(4);
+    sheet_row(SR_COPY);
     press(B_OCTUP);
     ok = ui.cursor == 4u && t->step[4].note[0] == 62 && t->step[5].time == ST_TIE && t->step[2].note[0] == 62 &&
-         step_force(&t->step[4]) == FO_SOFT && motion_find(t, 4, P_ATK) >= 0 && motion_find(t, 2, P_ATK) >= 0 &&
-         ui.sheet == 4u && msg_is("COPIED");
+         note_force(&t->step[4], 0) == FRC_SOFT && motion_find(t, 4, P_ATK) >= 0 && motion_find(t, 2, P_ATK) >= 0 &&
+         ui.sheet == SR_MOVE + 1u && msg_is("COPIED");
     bad += check("COPY: just after the note, TIEs, force and lock with it; the sheet on MOVE for the copy", ok);
     turn(EN_K2, 1);
     ok = ui.cursor == 5u && t->step[5].note[0] == 62 && t->step[2].note[0] == 62;
     bad += check("  MOVE then moves the copy", ok);
-    sheet_row(5);
+    sheet_row(SR_DEL);
     press(B_OCTUP);
     ok = !ui.sheet && t->step[5].time != ST_NOTE && !t->step[5].n && t->step[6].time != ST_TIE &&
          motion_find(t, 5, P_ATK) < 0 && t->step[2].note[0] == 62 && msg_is("NOTE DELETED");
@@ -194,10 +295,97 @@ static int copy_delete(void)
     open_sheet();
     close_up();
     ui.msg_t = 0;
-    sheet_row(4);
+    sheet_row(SR_COPY);
     press(B_OCTUP);
     ok = msg_is("NO NOTE") && t->step[12].n == 0u;
     bad += check("  an empty step: NO NOTE", ok);
+    return bad;
+}
+
+static int drum_sheet(void)
+{
+    int bad = 0, ok;
+    track_t *t;
+    ui_power_on();
+    song.sel = 3;
+    t = &trk[3];
+    track_defaults_steps(t);
+    t->p[P_SLEN] = 16;
+    go_page(GR_ROLL);
+    ui.cursor = 2;
+    ui.lane = 1;
+    frame();
+    grid_hit(t, 2, 1, 1);
+    ok = drum_track(t) && (step_lanes(&t->step[2]) & 2u);
+    open_sheet();
+    close_up();
+    ok &= ui.sheet == 1u && !grid_on();
+    bad += check("DRUM grid: OCT+ held opens the sheet (the grid's keys play meanwhile)", ok);
+    turn(EN_K2, 1);
+    ok = (step_accents(&t->step[2]) & 2u) != 0u;
+    sheet_row(DR_RATCH);
+    turn(EN_K2, 1);
+    turn(EN_K2, 1);
+    ok &= step_ratchet(&t->step[2]) == 3u;
+    sheet_row(DR_NUDGE);
+    turn(EN_K2, 1);
+    turn(EN_K2, 1);
+    turn(EN_K2, 1);
+    ok &= step_micro(&t->step[2]) == 3;
+    sheet_row(DR_FILL);
+    turn(EN_K2, 1);
+    ok &= step_fill(&t->step[2]) == FC_FILL;
+    bad += check("  ACC the hit's accent, RATCH x3, NUDGE +3/64, FILL: the step's", ok);
+    sheet_row(DR_MOVE);
+    turn(EN_K2, 1);
+    ok = ui.cursor == 3u && (step_lanes(&t->step[3]) & 2u) && !(step_lanes(&t->step[2]) & 2u) &&
+         (step_accents(&t->step[3]) & 2u);
+    turn(EN_K2, -1);
+    turn(EN_K2, -1);
+    turn(EN_K2, -1);
+    ok &= ui.cursor == 0u && (step_lanes(&t->step[0]) & 2u);
+    ui.msg_t = 0;
+    turn(EN_K2, -1);
+    ok &= msg_is("NO ROOM") && ui.cursor == 0u;
+    bad += check("  MOVE: the hit (and its accent) a step a detent, stopped at the first step", ok);
+    sheet_row(DR_COPY);
+    press(B_OCTUP);
+    ok = ui.cursor == 1u && (step_lanes(&t->step[1]) & 2u) && (step_lanes(&t->step[0]) & 2u) && ui.sheet == DR_MOVE + 1u;
+    sheet_row(DR_DEL);
+    press(B_OCTUP);
+    ok &= !ui.sheet && !(step_lanes(&t->step[1]) & 2u) && (step_lanes(&t->step[0]) & 2u) && msg_is("HIT DELETED");
+    bad += check("  COPY: just after it, then MOVE moves the copy; DELETE takes the hit out, the sheet closes", ok);
+    return bad;
+}
+
+static int glo_fill(void)
+{
+    int bad = 0, ok;
+    ui_power_on();
+    song.sel = 0;
+    go_page(GR_ROLL);
+    frame();
+    lay_combo(B_GLO, white(6));
+    frame();
+    ok = fill_held != 0u;
+    key_up(white(6));
+    btn_up(B_GLO);
+    frames(100);
+    ok &= !fill_held;
+    bad += check("GLO + E4 held: a fill while it is held, gone with the key", ok);
+    lay_combo(B_GLO, black(4));
+    frame();
+    ok = fill_arm == 1u && msg_is("FILL: NEXT BAR");
+    key_up(black(4));
+    btn_up(B_GLO);
+    frames(100);
+    lay_combo(B_GLO, black(4));
+    frame();
+    ok &= fill_arm == 0u && msg_is("FILL BAR OFF");
+    key_up(black(4));
+    btn_up(B_GLO);
+    frames(100);
+    bad += check("  GLO + D#4: the next bar is a fill, again: cancelled", ok);
     return bad;
 }
 
@@ -218,7 +406,7 @@ static int other_pages(void)
 
 int main(void)
 {
-    int bad = open_close() + rows() + moves() + copy_delete() + other_pages();
+    int bad = drum_sheet() + glo_fill() + open_close() + rows() + zoom_del() + moves() + copy_delete() + other_pages();
     printf("%s\n", bad ? "SHEET TEST FAILED" : "sheet tests passed");
     return bad != 0;
 }

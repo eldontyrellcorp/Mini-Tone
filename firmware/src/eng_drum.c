@@ -159,20 +159,17 @@ static uint32_t step_accents(const step_t *s) { return s->flags & SF_ACCENT ? st
  * before the grid, the grid's edits */
 static void step_to_grid(step_t *s)
 {
-    uint32_t i, k = 0;
+    uint32_t i;
     if (s->time != ST_NOTE)
         return;
-    for (i = 0; i < s->n && i < 4u; i++) {
+    for (i = s->n < 4u ? s->n : 4u; i-- > 0;) {
         uint32_t l = drum_lane(s->note[i]);
-        if (s->note[i] == DRUM_LANE_NOTE[l])
+        if (s->note[i] == DRUM_LANE_NOTE[l]) {
             s->hit |= (uint8_t)(1u << l);
-        else
-            s->note[k++] = s->note[i];
+            step_drop_note(s, i);
+        }
     }
-    for (i = k; i < 4u; i++)
-        s->note[i] = 0;
-    s->n = (uint8_t)k;
-    if (!k && (s->flags & SF_ACCENT)) {
+    if (!s->n && (s->flags & SF_ACCENT)) {
         s->acc |= s->hit;
         s->flags &= (uint8_t)~SF_ACCENT;
     }

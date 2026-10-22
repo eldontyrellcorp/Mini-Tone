@@ -264,7 +264,10 @@ static void ed_step_put(step_t *st, const uint8_t *a, uint32_t na)
     }
     if (na >= 12u) step_set_chance(st, a[11] <= 100u ? a[11] : 100u);
     if (na >= 13u) step_set_ratchet(st, a[12]);
-    if (na >= 14u) step_set_nudge(st, (int32_t)(a[13] & 15u) - 8);
+    if (na >= 14u) {
+        step_set_nudge(st, (int32_t)(a[13] & 15u) - 8);
+        st->fx &= (uint8_t)~12u;                     /* (the editor's nudge is the sixteenth; no quarter on it) */
+    }
     ui.force = 1;
 }
 static void ed_step_reply(const step_t *st)              /* the same 14 bytes */

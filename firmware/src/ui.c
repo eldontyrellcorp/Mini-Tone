@@ -139,6 +139,8 @@ static struct {
     uint8_t bank;                /* SEQ: 16-step bank (follows the cursor) */
     uint8_t cursor;              /* SEQ: step being edited (STEP page KNOB 1 moves it) */
     uint8_t entry_open;          /* SEQ: keys held since the first press of this entry */
+    uint8_t note_k;              /* the sheet: the note of the cursor's chord NOTE picked (0..n-1) */
+    int8_t zoom;                 /* the roll's steps shown: NV_ZOOM[1 + zoom] (PRESETS with the sheet open), 0 = 16 as before */
     uint8_t sheet;               /* SEQ > STEP (a melodic track): the note's sheet (OCT+ held) open: 1 + its row, 0 closed */
     uint8_t lane;                /* SEQ > STEP on a DRUM track (the grid): the lane the keys and KNOB 3 / 4 edit */
     uint8_t plk_src;             /* parameter locks (ui_input.c lock_*): the sound page whose KNOB 1..4 a step held
@@ -550,26 +552,36 @@ static uint32_t note_set_len(track_t *t, uint32_t i, uint32_t want)
     return n;
 }
 
-/* ---- the note's sheet (after SLOOP 2.8's NOTES sheet, GPL-3.0; SLOOP keeps its own steps, so does this firmware):
- * SEQ > STEP on a melodic track, OCT+ held (0.4 s): six rows over the roll, KNOB 1 picks one, KNOB 2 sets its value,
- * OCT+ tapped does the SLIDE / COPY / DELETE, OCT- closes. They act on the note under the cursor (a TIE: the note
- * before it): its step, TIEs, nudge, chance, force and parameter locks go together. FORCE is the step's velocity
- * (GHOST SOFT NORM HARD) or its accent */
-static const char *const SHEET_N[6] = {"SLIDE", "NUDGE", "FORCE", "MOVE", "COPY", "DELETE"};
+/* ---- the note's sheet (after SLOOP 2.8's NOTES page and its sheet, GPL-3.0; SLOOP keeps its own steps, so does this
+ * firmware): SEQ > STEP on a melodic track, OCT+ held (0.4 s): rows over the roll, KNOB 1 picks one (six show, they scroll),
+ * KNOB 2 sets its value, PRESETS zooms the roll, OCT+ tapped does the SLIDE / COPY / DELETE, OCT- closes. NOTE picks the
+ * note of the chord (ui.note_k) that PITCH, FORCE and RATCH edit and DELETE takes out; LEN, SLIDE, NUDGE, FILL, MOVE
+ * and COPY act on the note under the cursor (a TIE: the note before it) whole: its step, TIEs, nudge, chance, condition
+ * and parameter locks go together. FORCE: GHOST SOFT NORM HARD of that note (the step's lvl), or ACC (the step's accent) */
+enum { SR_NOTE, SR_PITCH, SR_LEN, SR_FORCE, SR_RATCH, SR_SLIDE, SR_NUDGE, SR_FILL, SR_MOVE, SR_COPY, SR_DEL, SR_N };
+static const char *const SHEET_N[SR_N] = {"NOTE", "PITCH", "LEN", "FORCE", "RATCH", "SLIDE", "NUDGE", "FILL", "MOVE", "COPY",
+                                          "DELETE"};
+/* the DRUM grid's sheet (SLOOP 2.8's, for the hit of the lane KNOB 2 picked at the cursor step): ACC the hit's accent; RATCH,
+ * NUDGE and FILL are the step's (all its hits); MOVE the hit a step on or back, COPY just after it, DELETE it */
+enum { DR_ACC, DR_RATCH, DR_NUDGE, DR_FILL, DR_MOVE, DR_COPY, DR_DEL, DR_N };
+static const char *const DSHEET_N[DR_N] = {"ACC", "RATCH", "NUDGE", "FILL", "MOVE", "COPY", "DELETE"};
 static const char *const FORCE_N[5] = {"GHOST", "SOFT", "NORM", "HARD", "ACC"};
-enum { FO_GHOST, FO_SOFT, FO_NORM, FO_HARD, FO_ACC };
-static const uint8_t FORCE_VEL[4] = {40, 64, 0, 118};          /* (0: the default, 96) */
-static uint32_t step_force(const step_t *s)
+static const char *const FILL_N[3] = {"NORMAL", "FILL", "NO FILL"};
+static const char *const RATCH_N[4] = {"-", "x2", "x3", "x4"};
+static const uint8_t NV_ZOOM[4] = {8, 16, 32, 64};      /* the steps the roll shows (PRESETS with the sheet open) */
+enum { FRC_GHOST, FRC_SOFT, FRC_NORM, FRC_HARD, FRC_ACC };
+static const uint8_t FRC_LVL[4] = {LV_GHOST, LV_SOFT, LV_NORM, LV_HARD};
+static uint32_t note_force(const step_t *s, uint32_t k)
 {
+    uint32_t l = step_lvl(s, k);
     if (s->flags & SF_ACCENT)
-        return FO_ACC;
-    return s->vel && s->vel <= 48u ? FO_GHOST : s->vel && s->vel <= 80u ? FO_SOFT : s->vel > 108u ? FO_HARD : FO_NORM;
+        return FRC_ACC;
+    return l == LV_GHOST ? FRC_GHOST : l == LV_SOFT ? FRC_SOFT : l == LV_HARD ? FRC_HARD : FRC_NORM;
 }
-static void step_set_force(step_t *s, uint32_t f)
+static void note_force_set(step_t *s, uint32_t k, uint32_t f)
 {
-    s->flags = (uint8_t)(f == FO_ACC ? s->flags | SF_ACCENT : s->flags & ~SF_ACCENT);
-    if (f != FO_ACC)
-        s->vel = FORCE_VEL[f > FO_HARD ? FO_HARD : f];
+    step_set_lvl(s, k, FRC_LVL[f > FRC_HARD ? FRC_HARD : f]);
+    s->flags = (uint8_t)(f == FRC_ACC ? s->flags | SF_ACCENT : s->flags & ~SF_ACCENT);
 }
 /* the first step of the note the step i belongs to (a TIE: the note before it), NSTEP: none there */
 static uint32_t note_start(const track_t *t, uint32_t i)
@@ -627,10 +639,15 @@ static int32_t note_shift(track_t *t, uint32_t i, int32_t dir, int copy)
     lock_shift(t, i, to, copy);
     return (int32_t)to;
 }
-static void note_del(track_t *t, uint32_t i)             /* the note, its TIEs and its locks */
+static void note_del(track_t *t, uint32_t i, uint32_t k)   /* one note of a chord; the last one: the note, TIEs and locks */
 {
+    step_t *st = &t->step[i];
+    if (st->n > 1u) {
+        step_drop_note(st, k);
+        return;
+    }
     note_set_len(t, i, 1);
-    step_clear(&t->step[i]);
+    step_clear(st);
     motion_clear_locks(t, i);
 }
 
@@ -641,7 +658,7 @@ static void note_del(track_t *t, uint32_t i)             /* the note, its TIEs a
  * down / up. KNOB 1 STEP, 2 LANE, 3 HIT, 4 ACC edit the cursor step. A sound load never converts the
  * steps: the grid shows a step's notes on their lanes (eng_drum.c step_lanes) and an edit makes the lane its
  * own (grid_own). Live recording on a DRUM track writes hits (seq.c rec_note) */
-static int grid_on(void) { return !ui.home && !ui.menu && !ui.confirm && cur_page()->graph == GR_ROLL && drum_track(TSEL); }
+static int grid_on(void) { return !ui.home && !ui.menu && !ui.confirm && !ui.sheet && cur_page()->graph == GR_ROLL && drum_track(TSEL); }
 /* GLO > SONG (1.2): the white keys A B C D (A3 B3 C4 D4, white places 2..5: seq.c song_key) set the selected cell's slot;
  * they do not sound there, the other keys play as anywhere (seq.c keyboard_block: song.grid 3) */
 static int song_keys_on(void) { return !ui.home && !ui.menu && !ui.confirm && !ui.layer && cur_page()->graph == GR_SONG; }
@@ -660,16 +677,13 @@ static int black_held(uint32_t p)
  * a note of another pitch on the lane (a low tom 41) becomes the lane's own */
 static void grid_own(step_t *s, uint32_t l)
 {
-    uint32_t k, j = 0;
+    uint32_t k;
     step_to_grid(s);
-    for (k = 0; k < s->n; k++)
-        if (drum_lane(s->note[k]) == l)
+    for (k = s->n; k-- > 0;)
+        if (drum_lane(s->note[k]) == l) {
             s->hit |= (uint8_t)(1u << l);
-        else
-            s->note[j++] = s->note[k];
-    for (k = j; k < 4u; k++)
-        s->note[k] = 0;
-    s->n = (uint8_t)j;
+            step_drop_note(s, k);
+        }
 }
 
 /* lane l of step i: on 1, off 0, toggled 2 */
@@ -720,6 +734,7 @@ static void cursor_set(int32_t c)
 {
     int32_t len = TSEL->p[P_SLEN] > 0 ? TSEL->p[P_SLEN] : 1;
     ui.cursor = (uint8_t)((c % len + len) % len);
+    ui.note_k = 0;
     ui.bank = (uint8_t)(ui.cursor / 16u);
     ui.entry_open = 0;
 }
@@ -728,6 +743,8 @@ static void cursor_fix(void)                           /* LEN got shorter: onto 
 {
     if (ui.cursor >= (uint32_t)TSEL->p[P_SLEN])
         cursor_set(TSEL->p[P_SLEN] - 1);
+    if (ui.note_k && ui.note_k >= TSEL->step[ui.cursor].n)
+        ui.note_k = (uint8_t)(TSEL->step[ui.cursor].n ? TSEL->step[ui.cursor].n - 1u : 0u);
 }
 
 static void note_name(char *b, uint32_t n)

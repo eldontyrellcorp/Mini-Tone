@@ -784,38 +784,180 @@ static int sheet_page(void)
 {
     const page_t *pg = cur_page();
     return !ui.home && !ui.menu && !ui.confirm && !name_on() && !act_cols() && !ui.ml.on && song.seq_mode &&
-           pg->graph == GR_ROLL && pg->scope == SC_STEP && !drum_track(TSEL) && !layer_held();
+           pg->graph == GR_ROLL && pg->scope == SC_STEP && !layer_held();
+}
+/* the DRUM grid's sheet (ui.c DSHEET_N): the hit of lane ui.lane at the cursor step */
+static void drum_sheet_knob(uint32_t slot, int32_t steps)
+{
+    track_t *t = TSEL;
+    uint32_t row = ui.sheet - 1u, b = 1u << ui.lane, src = ui.cursor;
+    step_t *st = &t->step[src];
+    int32_t d = steps > 0 ? 1 : -1;
+    if (slot == 0u) {
+        ui.sheet = (uint8_t)(1 + clamp((int32_t)row + steps, 0, DR_N - 1));
+        return;
+    }
+    if (slot != 1u || row == DR_COPY || row == DR_DEL)
+        return;
+    if (chain_busy()) {
+        ui_message("STOP TO EDIT");
+        return;
+    }
+    if (!(step_lanes(st) & b)) {
+        ui_message("NO HIT");
+        return;
+    }
+    step_undo_take(t, 0x4000u + row);
+    switch (row) {
+    case DR_ACC:
+        grid_acc(t, src, ui.lane, steps > 0);
+        break;
+    case DR_RATCH:
+        step_set_ratchet(st, (uint32_t)clamp((int32_t)step_ratchet(st) + d, 1, 4));
+        break;
+    case DR_NUDGE:
+        step_set_micro(st, step_micro(st) + steps);
+        if (t->p[P_SQNT])
+            ui_message("QUANTIZE IS ON");
+        break;
+    case DR_FILL:
+        step_set_fill(st, (uint32_t)clamp((int32_t)step_fill(st) + d, FC_NORM, FC_NOFILL));
+        break;
+    default: {                                          /* MOVE: the hit a step a detent, onto a step without it */
+        int32_t n = steps;
+        uint32_t len = (uint32_t)clamp(t->p[P_SLEN], 1, NSTEP);
+        while (n) {
+            uint32_t at = ui.cursor, to = n > 0 ? at + 1u : at - 1u;
+            if ((n < 0 && !at) || to >= len || (step_lanes(&t->step[to]) & b)) {
+                ui_message("NO ROOM");
+                break;
+            }
+            {
+                uint32_t acc = step_accents(&t->step[at]) & b;
+                grid_hit(t, to, ui.lane, 1);
+                if (acc)
+                    grid_acc(t, to, ui.lane, 1);
+                grid_hit(t, at, ui.lane, 0);
+            }
+            cursor_set((int32_t)to);
+            n += n > 0 ? -1 : 1;
+        }
+        break;
+    }
+    }
+    motion_undo_done(t);
+    sync_reload = 1;
+}
+static void drum_sheet_do(void)                         /* OCT+ tapped with the grid's sheet open */
+{
+    track_t *t = TSEL;
+    uint32_t row = ui.sheet - 1u, b = 1u << ui.lane, at = ui.cursor, len = (uint32_t)clamp(t->p[P_SLEN], 1, NSTEP);
+    if (row != DR_COPY && row != DR_DEL)
+        return;
+    if (chain_busy()) {
+        ui_message("STOP TO EDIT");
+        return;
+    }
+    if (!(step_lanes(&t->step[at]) & b)) {
+        ui_message("NO HIT");
+        return;
+    }
+    step_undo_take(t, 0);
+    if (row == DR_COPY) {
+        uint32_t acc = step_accents(&t->step[at]) & b, to = at + 1u;
+        if (to >= len || (step_lanes(&t->step[to]) & b)) {
+            ui_message("NO ROOM");
+            motion_undo_done(t);
+            return;
+        }
+        grid_hit(t, to, ui.lane, 1);
+        if (acc)
+            grid_acc(t, to, ui.lane, 1);
+        cursor_set((int32_t)to);
+        ui.sheet = DR_MOVE + 1;
+        ui_message("COPIED");
+    } else {
+        grid_hit(t, at, ui.lane, 0);
+        ui.sheet = 0;
+        ui_message("HIT DELETED");
+    }
+    motion_undo_done(t);
+    sync_reload = 1;
+    ui.force = 1;
 }
 static void sheet_knob(uint32_t slot, int32_t steps)
 {
     track_t *t = TSEL;
-    uint32_t row = ui.sheet - 1u, i = note_start(t, ui.cursor);
+    uint32_t row = ui.sheet - 1u, i = note_start(t, ui.cursor), k;
+    step_t *st;
+    int32_t d = steps > 0 ? 1 : -1;
+    if (drum_track(t)) {
+        drum_sheet_knob(slot, steps);
+        return;
+    }
     if (slot == 0u) {
-        ui.sheet = (uint8_t)(1 + clamp((int32_t)row + steps, 0, 5));
+        ui.sheet = (uint8_t)(1 + clamp((int32_t)row + steps, 0, SR_N - 1));
         return;
     }
     if (slot != 1u)
         return;
-    if (i == NSTEP) {
+    if (chain_busy()) {
+        ui_message("STOP TO EDIT");
+        return;
+    }
+    if (i == NSTEP && row != SR_PITCH) {
         ui_message("NO NOTE");
         return;
     }
-    if (row > 3u)
-        return;                                         /* (COPY and DELETE: OCT+) */
+    if (row == SR_COPY || row == SR_DEL)
+        return;                                         /* (OCT+) */
+    if (row == SR_NOTE) {                               /* a view, no edit: the chord's note the rows below act on */
+        ui.note_k = (uint8_t)clamp((int32_t)ui.note_k + d, 0, (int32_t)t->step[i].n - 1);
+        return;
+    }
     step_undo_take(t, 0x4000u + row);                   /* (a knob turned on: one undo) */
+    if (i == NSTEP) {                                   /* PITCH on an empty step: a note, your last one */
+        st = &t->step[ui.cursor];
+        step_clear(st);
+        st->note[0] = last_note;
+        st->n = 1;
+        st->time = ST_NOTE;
+        ui.note_k = 0;
+        motion_undo_done(t);
+        sync_reload = 1;
+        return;
+    }
+    st = &t->step[i];
+    k = ui.note_k < st->n ? ui.note_k : 0u;
     switch (row) {
-    case 0:
-        t->step[i].flags = (uint8_t)(steps > 0 ? t->step[i].flags | SF_SLIDE : t->step[i].flags & ~SF_SLIDE);
+    case SR_PITCH:
+        st->note[k] = (uint8_t)clamp(st->note[k] + steps, 1, 127);
+        last_note = st->note[k];
         break;
-    case 1:
-        step_set_nudge(&t->step[i], clamp(step_nudge(&t->step[i]) + (steps > 0 ? 1 : -1), -8, 7));
+    case SR_LEN: {
+        uint32_t was = note_len(t, i), n = note_set_len(t, i, (uint32_t)clamp((int32_t)was + steps, 1, NSTEP));
+        if (steps > 0 && n == was)
+            ui_message(i + n < (uint32_t)clamp(t->p[P_SLEN], 1, NSTEP) ? "NOTE AHEAD" : "END OF PATTERN");
+        break;
+    }
+    case SR_FORCE:
+        note_force_set(st, k, (uint32_t)clamp((int32_t)note_force(st, k) + d, FRC_GHOST, FRC_ACC));
+        break;
+    case SR_RATCH:
+        step_set_nrat(st, k, (uint32_t)clamp((int32_t)step_nrat(st, k) + d, 0, 3));
+        break;
+    case SR_SLIDE:
+        st->flags = (uint8_t)(steps > 0 ? st->flags | SF_SLIDE : st->flags & ~SF_SLIDE);
+        break;
+    case SR_NUDGE:
+        step_set_micro(st, step_micro(st) + steps);
         if (t->p[P_SQNT])
             ui_message("QUANTIZE IS ON");
         break;
-    case 2:
-        step_set_force(&t->step[i], (uint32_t)clamp((int32_t)step_force(&t->step[i]) + (steps > 0 ? 1 : -1), FO_GHOST, FO_ACC));
+    case SR_FILL:
+        step_set_fill(st, (uint32_t)clamp((int32_t)step_fill(st) + d, FC_NORM, FC_NOFILL));
         break;
-    default: {
+    default: {                                          /* MOVE: a step a detent */
         int32_t n = steps;
         while (n) {
             int32_t to = note_shift(t, i, n, 0);
@@ -825,6 +967,7 @@ static void sheet_knob(uint32_t slot, int32_t steps)
             }
             i = (uint32_t)to;
             cursor_set(to);
+            ui.note_k = (uint8_t)k;
             n += n > 0 ? -1 : 1;
         }
         break;
@@ -836,8 +979,13 @@ static void sheet_knob(uint32_t slot, int32_t steps)
 static void sheet_do(void)                              /* OCT+ tapped with the sheet open */
 {
     track_t *t = TSEL;
-    uint32_t row = ui.sheet - 1u, i = note_start(t, ui.cursor);
-    if (row != 0u && row < 4u)
+    uint32_t row = ui.sheet - 1u, i;
+    if (drum_track(t)) {
+        drum_sheet_do();
+        return;
+    }
+    i = note_start(t, ui.cursor);
+    if (row != SR_SLIDE && row != SR_COPY && row != SR_DEL)
         return;
     if (i == NSTEP) {
         ui_message("NO NOTE");
@@ -848,9 +996,10 @@ static void sheet_do(void)                              /* OCT+ tapped with the 
         return;
     }
     step_undo_take(t, 0);
-    if (row == 0u) {
+    if (row == SR_SLIDE) {
         t->step[i].flags ^= SF_SLIDE;
-    } else if (row == 4u) {
+    } else if (row == SR_COPY) {
+        uint32_t k = ui.note_k;
         int32_t to = note_shift(t, i, 1, 1);
         if (to < 0) {
             ui_message("NO ROOM");
@@ -858,10 +1007,11 @@ static void sheet_do(void)                              /* OCT+ tapped with the 
             return;
         }
         cursor_set(to);
-        ui.sheet = 4;                                   /* (MOVE: KNOB 2 moves the copy) */
+        ui.note_k = (uint8_t)k;
+        ui.sheet = SR_MOVE + 1;                         /* (MOVE: KNOB 2 moves the copy) */
         ui_message("COPIED");
     } else {
-        note_del(t, i);
+        note_del(t, i, ui.note_k);
         cursor_fix();
         ui.sheet = 0;
         ui_message("NOTE DELETED");
@@ -916,12 +1066,12 @@ static void step_edit(uint32_t slot, int32_t steps)
 {
     step_t *st = &TSEL->step[ui.cursor];
     uint32_t i;
-    if (drum_track(TSEL)) {
-        grid_edit(slot, steps);
-        return;
-    }
     if (ui.sheet) {
         sheet_knob(slot, steps);
+        return;
+    }
+    if (drum_track(TSEL)) {
+        grid_edit(slot, steps);
         return;
     }
     switch (slot) {
@@ -1182,9 +1332,10 @@ static uint32_t oct_taps(uint32_t pressed, int here)
  * EDIT leaves it */
 static void step_toggle(const track_t *t, step_t *st, const uint8_t *ch, uint32_t n)
 {
-    uint32_t i, j, k;
+    uint32_t i, j;
     if (st->time != ST_NOTE) {
         st->n = 0;
+        st->lvl = st->rat = 0;
         st->time = ST_NOTE;
     }
     for (j = 0; j < st->n && st->note[j] != ch[0]; j++)
@@ -1193,9 +1344,7 @@ static void step_toggle(const track_t *t, step_t *st, const uint8_t *ch, uint32_
         for (i = 0; i < n; i++)
             for (j = 0; j < st->n; j++)
                 if (st->note[j] == ch[i]) {
-                    for (k = j; k + 1u < st->n; k++)
-                        st->note[k] = st->note[k + 1u];
-                    st->n--;
+                    step_drop_note(st, j);
                     break;
                 }
         if (!st->n)
@@ -1205,6 +1354,7 @@ static void step_toggle(const track_t *t, step_t *st, const uint8_t *ch, uint32_
     if (t->p[P_VOICE] && !ENGINES[t->engine]->oneshot) {   /* MONO / LEG / UNI: one note */
         st->note[0] = ch[0];
         st->n = 1;
+        st->lvl = st->rat = 0;
         return;
     }
     for (i = 0; i < n && st->n < 4u; i++) {
@@ -1240,6 +1390,7 @@ static void seq_entry(uint32_t pressed)
             ui.entry_open = 1;
             if (!add) {
                 st->n = 0;
+                st->lvl = st->rat = 0;
                 st->time = ST_NOTE;
             }
         }
@@ -1280,6 +1431,11 @@ static void presets_turn(int32_t s)
     const page_t *pg = cur_page();
     uint32_t g = pg->graph;
     uint64_t held = lock_held();
+    if (ui.sheet && g == GR_ROLL) {                       /* the note's sheet open: the roll's zoom, 8 .. 64 steps */
+        ui.zoom = (int8_t)clamp(ui.zoom + (s > 0 ? 1 : -1), -1, 2);
+        ui.force = 1;
+        return;
+    }
     if (held) {                                           /* STEP with steps held: their NUDGE (1.2) */
         nudge_turn(held, s);
         return;

@@ -115,12 +115,23 @@ it changes:
   knob for a MOMENTARY change
 - Double-tap a layer's button to keep its layer open without holding; tap it again to close
 - On SEQ > STEP, hold a step and turn KNOB 1–4 to lock those parameters on that step (PRESETS: its NUDGE)
-- On SEQ > STEP (a melodic track), hold OCT+ for 0.4 s for the **note's sheet**, after [SLOOP](https://github.com/isod89/sloop-fm1) 2.8's: six rows over the roll,
-  KNOB 1 picks one, KNOB 2 sets it. **SLIDE** on / off, **NUDGE** a sixteenth of a step a detent (-8..+7; it plays with the
-  track's QUANTIZE off), **FORCE** GHOST / SOFT / NORM / HARD (the step's velocity) or ACC, **MOVE** the note a step on or back (its
-  TIEs, chance, nudge, force and parameter locks go with it, onto free steps only). OCT+ tapped in the sheet toggles SLIDE, **COPY**s the
-  note just after itself (then MOVE moves the copy) or **DELETE**s the note, its TIEs and locks; OCT− closes it. They act on the note
-  under the cursor (on a TIE, the note before it); one undo per turn (SAVE held). OCT+ tapped is the octave as before, on release
+- On SEQ > STEP, hold OCT+ for 0.4 s for the **sheet**, after [SLOOP](https://github.com/isod89/sloop-fm1) 2.8's NOTES page and its
+  sheet. KNOB 1 picks a row (six show, they scroll), KNOB 2 sets it, PRESETS zooms the roll (8, 16, 32 or 64 steps), OCT+ tapped
+  does SLIDE / COPY / DELETE, OCT− closes it; OCT+ tapped without it is the octave as before (on release). One undo per turn
+  (SAVE held). On a melodic track the rows are **NOTE** (which note of the step's chord the next rows edit), **PITCH** (that note
+  alone; on an empty step it writes your last note), **LEN** (the note and its TIEs), **FORCE** (that note's GHOST / SOFT / NORM /
+  HARD, velocity 42 / 72 / step's / 127; ACC is the step's accent), **RATCH** (that note's own x2..x4, the others on the step's),
+  **SLIDE**, **NUDGE** (a 64th of the step a detent, −32..+31; it plays with the track's QUANTIZE off, and live recording keeps
+  the timing at the same resolution), **FILL** (NORMAL, FILL: the step plays only during a fill, NO FILL: only outside one),
+  **MOVE** (the note a step on or back with its TIEs, chance, nudge, force, condition and parameter locks, onto free steps only),
+  **COPY** (just after it, then MOVE moves the copy) and **DELETE** (the picked note; the last one takes the TIEs and locks too).
+  On the DRUM grid the sheet works on the hit of the lane at the cursor: **ACC**, **RATCH**, **NUDGE** and **FILL** (the last three
+  are the step's), **MOVE**, **COPY**, **DELETE**; the white keys play while it is open
+- **Fills:** hold GLO and **E4** for a fill while it is held, or tap **D#4** to make the next bar a fill (again: cancelled).
+  Steps set to FILL play only then, steps set to NO FILL only outside it; STOP ends it
+- While a song plays, each row of HOME > TRACKS shows the letter (A..D) of the slot its section plays that track from
+- The extra per-step data (force, ratchet per note, condition, finer nudge) is saved with the project (in its extension, older
+  projects load as they were); a user preset's pattern and the web editor's steps keep none of it
 - On action pages and in dialogs, OCT+ does it and OCT− goes back; in the menu, OCT+ / OCT− change the value and HOME closes it
 - Save a sound: stop, tap SAVE, pick a slot with KNOB 1, then OCT+ and OCT+ again (name it with the keys)
 

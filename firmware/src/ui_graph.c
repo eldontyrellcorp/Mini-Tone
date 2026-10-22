@@ -76,7 +76,7 @@ static int32_t bar_x(uint32_t i) { return 12 + (int32_t)(i % 16u) * 13 + (int32_
  * shorter DIM; a key held on the track: its row ACCENT). Rows in the track's scale (SCL ROOT / SCALE; CHR: the white
  * keys) are tinted LANE, a C row closes with a RAISE line; step lines GRID, every 4th RAISE. A note is a 9 x 3 bar in
  * its column (an accent: TEXT, the row's full height; the cursor step's notes: ACCENT), chords stacked, lane hits as
- * their notes (a RATCH step's bars in its 2..4 parts, 1 px apart); a TIE carries the bars of the note before through
+ * their notes (a RATCH step's bars in its 2..4 parts, 1 px apart; a note's own ratchet splits its bar alone); a TIE carries the bars of the note before through
  * its column; a REST is empty; a slide is a TEXT diagonal from the end of its bar into the next note (not from a
  * RATCH step: it never slides out). Notes outside
  * the view: a 1 px mark on the edge. The cursor: a TEXT column frame; the playhead: a 1 px ACCENT line. The view
@@ -88,6 +88,10 @@ static int32_t bar_x(uint32_t i) { return 12 + (int32_t)(i % 16u) * 13 + (int32_
 #define PR_X0 35                                    /* the first step column */
 #define PR_CW 12                                    /* px per step */
 #define PR_KX 24                                    /* the keyboard strip, 9 px */
+/* the zoom (the sheet open, PRESETS: ui.zoom): the roll shows 8, 16 (as always), 32 or 64 steps of the 192 px, 24, 12, 6 or
+ * 3 px each; at 16 the cursor's bank, else the window of that many steps the cursor is in */
+static uint32_t pr_nv(void) { return NV_ZOOM[clamp(1 + (int32_t)ui.zoom, 0, 3)]; }
+static uint32_t pr_base(void) { uint32_t nv = pr_nv(); return nv == 16u ? ui.bank * 16u : ui.cursor / nv * nv; }
 static struct {
     uint8_t lo, trk, init, moving;                    /* lo: the note of the bottom row; moving: on its way */
     uint32_t frame;
@@ -124,12 +128,12 @@ static uint32_t pr_held(void)
  * forced, a gap in the frames, another track or MENU > ANIM OFF */
 static void pr_follow(const track_t *t)
 {
-    uint32_t i, j, len = (uint32_t)t->p[P_SLEN], base = ui.bank * 16u;
+    uint32_t i, j, len = (uint32_t)t->p[P_SLEN], base = pr_base(), nv = pr_nv();
     int32_t lo = 127, hi = -1, tgt, d, cur = proll.lo;
     int snap = ui.force || !proll.init || proll.trk != song.sel || ui.frame != proll.frame + 1u || (ui_prefs & PREF_ANIM_OFF);
     if (proll.init && proll.frame == ui.frame)
         return;
-    for (i = 0; i < 16u && base + i < len; i++) {
+    for (i = 0; i < nv && base + i < len; i++) {
         uint32_t s = pr_src(t, base + i, len);
         for (j = 0; s < NSTEP && j < 4u + NLANE; j++) {
             int32_t n = pr_note(&seq_steps(t)[s], j);
@@ -176,30 +180,37 @@ static void pr_bars(const step_t *st, int32_t x, int32_t w, uint16_t c, int acc_
     for (j = 0; j < 4u + NLANE; j++) {
         int32_t n = pr_note(st, j), y;
         int acc;
+        uint32_t lv = j < 4u ? step_lvl(st, j) : 0u, h = j < 4u && hits && step_nrat(st, j) ? step_nrat(st, j) + 1u : hits;
+        uint16_t col = c;
         if (n < 0)
             continue;
+        h = h ? h : 1u;
         acc = acc_all || (j >= 4u && ((st->acc >> (j - 4u)) & 1u));
+        if (lv == LV_GHOST && !acc)                    /* (SLOOP 2.8) a ghost note DIM, a hard one the row's full height */
+            col = T_DIM;
         y = pr_row_y(n);
         if (*first < -1000)
             *first = y;
         if (y < PR_Y0)
-            pr_split(x, PR_Y0, w, 1, c, hits);
+            pr_split(x, PR_Y0, w, 1, col, h);
         else if (y >= ybot)
-            pr_split(x, ybot - 1, w, 1, c, hits);
+            pr_split(x, ybot - 1, w, 1, col, h);
         else if (acc)
-            pr_split(x, y, w, PR_RH, c == T_ACCENT ? c : T_TEXT, hits);
+            pr_split(x, y, w, PR_RH, col == T_ACCENT ? col : T_TEXT, h);
+        else if (lv == LV_HARD)
+            pr_split(x, y, w, PR_RH, col, h);
         else
-            pr_split(x, y + 1, w, PR_RH - 2, c, hits);
+            pr_split(x, y + 1, w, PR_RH - 2, col, h);
     }
 }
 static void graph_roll(const track_t *t, uint16_t c)
 {
-    uint32_t i, len = (uint32_t)t->p[P_SLEN], base = ui.bank * 16u, ncol, mask = scale_mask(t), held = pr_held();
+    uint32_t i, len = (uint32_t)t->p[P_SLEN], base = pr_base(), nv = pr_nv(), ncol, mask = scale_mask(t), held = pr_held();
     uint64_t locks = motion_lock_steps(trk_index(t));
-    int32_t r, ybot = PR_Y0 + PR_ROWS * PR_RH, gw;
+    int32_t r, ybot = PR_Y0 + PR_ROWS * PR_RH, gw, cw = 192 / (int32_t)nv;
     char nb[8];
-    ncol = base < len ? (len - base < 16u ? len - base : 16u) : 0u;
-    gw = (int32_t)ncol * PR_CW + 1;
+    ncol = base < len ? (len - base < nv ? len - base : nv) : 0u;
+    gw = (int32_t)ncol * cw + 1;
     for (r = 0; r < PR_ROWS; r++) {                 /* rows: the lane, the key, the C names */
         int32_t n = (int32_t)proll.lo + PR_ROWS - 1 - r, y = PR_Y0 + r * PR_RH;
         uint32_t pc = (uint32_t)n % 12u;
@@ -223,75 +234,141 @@ static void graph_roll(const track_t *t, uint16_t c)
         }
     }
     for (i = 0; i <= ncol; i++)                       /* step lines, the beats brighter */
-        cv_rect(PR_X0 + (int32_t)i * PR_CW, PR_Y0, 1, ybot - PR_Y0, i % 4u ? T_GRID : T_RAISE);
+        cv_rect(PR_X0 + (int32_t)i * cw, PR_Y0, 1, ybot - PR_Y0, i % 4u ? T_GRID : T_RAISE);
     for (i = 0; i < ncol; i++) {
         uint32_t si = base + i;
-        int32_t x = PR_X0 + (int32_t)i * PR_CW;
+        int32_t x = PR_X0 + (int32_t)i * cw;
         if (si == ui.cursor)
-            cv_frame(x, PR_Y0 - 2, PR_CW + 1, ybot - PR_Y0 + 4, T_TEXT);
+            cv_frame(x, PR_Y0 - 2, cw + 1, ybot - PR_Y0 + 4, T_TEXT);
         if (song.playing && si == t->seq_idx)
-            cv_rect(x + 6, PR_Y0, 1, ybot - PR_Y0, T_ACCENT);
+            cv_rect(x + cw / 2, PR_Y0, 1, ybot - PR_Y0, T_ACCENT);
         if ((locks >> si) & 1u)                       /* a parameter lock: a mark under the step */
-            cv_rect(x + 3, ybot + 3, 7, 2, T_ACCENT);
+            cv_rect(x + (cw > 7 ? (cw - 7) / 2 : 0), ybot + 3, cw > 7 ? 7 : cw - 1, 2, T_ACCENT);
     }
     for (i = 0; i < ncol; i++) {                      /* the notes */
         uint32_t si = base + i, s = pr_src(t, si, len), nx = (si + 1u) % len;
         const step_t *st, *ns = &seq_steps(t)[nx];
-        int32_t x = PR_X0 + (int32_t)i * PR_CW, y = -10000;
+        int32_t x = PR_X0 + (int32_t)i * cw, y = -10000;
         uint16_t col;
         if (s == NSTEP)
             continue;                                 /* a REST, empty, or a TIE after one */
         st = &seq_steps(t)[s];
         col = s == ui.cursor || si == ui.cursor ? T_ACCENT : c;
         if (s == si)
-            pr_bars(st, x + 2, 9, col, (st->flags & SF_ACCENT) != 0u, &y, step_ratchet(st));
+            pr_bars(st, x + (cw > 4 ? 2 : 0), cw > 4 ? cw - 3 : cw - 1, col, (st->flags & SF_ACCENT) != 0u, &y, step_ratchet(st));
         else                                          /* a TIE: the bars on through the gap before */
-            pr_bars(st, x - 1, 12, col, (st->flags & SF_ACCENT) != 0u, &y, 1u);
+            pr_bars(st, x - 1, cw, col, (st->flags & SF_ACCENT) != 0u, &y, 0u);
         if ((st->flags & SF_SLIDE) && step_ratchet(st) == 1u &&   /* (a ratcheted step never slides out) */
             ns->time == ST_NOTE && ns->n && y >= PR_Y0 && y < ybot) {
             int32_t ny = clamp(pr_row_y(ns->note[0]), PR_Y0, ybot - PR_RH);
-            cv_line(x + 10, y + 2, x + 14, ny + 2, T_TEXT);   /* the slide into the next note */
+            cv_line(x + cw - 2, y + 2, x + cw + 2, ny + 2, T_TEXT);   /* the slide into the next note */
         }
     }
 }
-/* the note's sheet over the roll (ui.sheet, ui_input.c sheet_knob): six rows (ui.c SHEET_N), the one KNOB 1 picks a THEME
- * bar with INK text, its value on the right; the note it acts on is the one under the cursor */
+/* the note's sheet over the roll (ui.sheet, ui_input.c sheet_knob): the rows of ui.c SHEET_N, six showing and scrolling
+ * with the one KNOB 1 picks, a THEME bar with INK text, its value on the right (SLOOP 2.8's NOTES page, as a sheet);
+ * the note it acts on is the one under the cursor, the chord's ui.note_k for NOTE, PITCH, FORCE and RATCH */
 #define SH_X 112
 #define SH_Y 6
 #define SH_W 124
 #define SH_RH 16
 static void graph_sheet(const track_t *t)
 {
-    uint32_t k, i = note_start(t, ui.cursor);
+    int drum = drum_track(t);
+    uint32_t k, nr = drum ? DR_N : SR_N, i = drum ? ui.cursor : note_start(t, ui.cursor), sel = ui.sheet - 1u;
+    uint32_t first = sel < 3u ? 0u : sel > nr - 4u ? nr - 6u : sel - 2u;
+    const step_t *st = drum ? &t->step[i] : i == NSTEP ? 0 : &t->step[i];
+    uint32_t nk = st && ui.note_k < st->n ? ui.note_k : 0u, lb = 1u << ui.lane;
     int32_t ty = HALF_UP(SH_RH - AF_S_CAP_H);
     cv_rrect(SH_X - 1, SH_Y - 1, SH_W + 2, 6 * SH_RH + 4, 5, T_RULE, T_SURF);
     cv_rrect(SH_X, SH_Y, SH_W, 6 * SH_RH + 2, 4, T_BG, T_RULE);
     for (k = 0; k < 6u; k++) {
+        uint32_t row = first + k;
         int32_t ry = SH_Y + 1 + (int32_t)k * SH_RH;
-        int sel = k + 1u == ui.sheet;
-        char v[8];
-        const char *vs = "";
-        uint16_t bg = sel ? T_THEME : T_BG;
+        int on = row == sel;
+        char v[12];
+        const char *vs = "", *label = drum ? DSHEET_N[row] : SHEET_N[row];
+        uint16_t bg = on ? T_THEME : T_BG;
         v[0] = 0;
-        if (i != NSTEP && k == 0u)
-            vs = t->step[i].flags & SF_SLIDE ? "ON" : "OFF";
-        else if (i != NSTEP && k == 1u) {
-            int32_t n = step_nudge(&t->step[i]);
-            fmt_int(v + (n > 0), n);
-            if (n > 0)
-                v[0] = '+';
-            vs = v;
-        } else if (i != NSTEP && k == 2u)
-            vs = FORCE_N[step_force(&t->step[i])];
-        if (sel)
+        if (drum && st && (step_lanes(st) & lb)) {
+            int32_t n;
+            switch (row) {
+            case DR_ACC:
+                vs = step_accents(st) & lb ? "ON" : "OFF";
+                break;
+            case DR_RATCH:
+                v[0] = 'x';
+                fmt_int(v + 1, (int32_t)step_ratchet(st));
+                vs = v;
+                break;
+            case DR_NUDGE:
+                n = step_micro(st);
+                fmt_int(v + (n > 0), n);
+                if (n > 0)
+                    v[0] = '+';
+                vs = v;
+                break;
+            case DR_FILL:
+                vs = FILL_N[step_fill(st)];
+                break;
+            default:
+                break;
+            }
+        } else if (!drum && st) {
+            int32_t n;
+            switch (row) {
+            case SR_NOTE:
+                fmt_int(v, (int32_t)nk + 1);
+                str_cpy(v + str_len(v), "/", 2);
+                fmt_int(v + str_len(v), (int32_t)st->n);
+                vs = v;
+                break;
+            case SR_PITCH:
+                note_name(v, st->note[nk]);
+                vs = v;
+                break;
+            case SR_LEN:
+                fmt_int(v, (int32_t)note_len(t, i));
+                vs = v;
+                break;
+            case SR_FORCE:
+                vs = FORCE_N[note_force(st, nk)];
+                break;
+            case SR_RATCH:
+                vs = RATCH_N[step_nrat(st, nk)];
+                break;
+            case SR_SLIDE:
+                vs = st->flags & SF_SLIDE ? "ON" : "OFF";
+                break;
+            case SR_NUDGE:
+                n = step_micro(st);
+                fmt_int(v + (n > 0), n);
+                if (n > 0)
+                    v[0] = '+';
+                vs = v;
+                break;
+            case SR_FILL:
+                vs = FILL_N[step_fill(st)];
+                break;
+            default:
+                break;
+            }
+        } else if (!drum && row == SR_PITCH) {
+            vs = "NEW";
+        }
+        if (on)
             cv_rrect(SH_X + 2, ry, SH_W - 4, SH_RH - 1, 3, T_THEME, T_BG);
         GFX_HOOK_ALIGN(0, ry + ty, 0, ry + ty + AF_S_CAP_H, AL_V, "note sheet row text centred");
-        cv_text_on(SH_X + 7, ry + ty - AF_S_CAP_Y, &AF_S, SHEET_N[k], sel ? T_INK : T_MID, bg);
+        cv_text_on(SH_X + 7, ry + ty - AF_S_CAP_Y, &AF_S, label, on ? T_INK : T_MID, bg);
         if (vs[0]) {
             GFX_HOOK_ALIGN(0, ry + ty, 0, ry + ty + AF_S_CAP_H, AL_V, "note sheet value centred");
-            cv_text_on(SH_X + SH_W - 7 - text_w(&AF_S, vs), ry + ty - AF_S_CAP_Y, &AF_S, vs, sel ? T_INK : T_TEXT, bg);
+            cv_text_on(SH_X + SH_W - 7 - text_w(&AF_S, vs), ry + ty - AF_S_CAP_Y, &AF_S, vs, on ? T_INK : T_TEXT, bg);
         }
     }
+    if (first)                                          /* more rows above / below */
+        cv_rect(SH_X + SH_W / 2 - 3, SH_Y, 7, 1, T_MID);
+    if (first + 6u < nr)
+        cv_rect(SH_X + SH_W / 2 - 3, SH_Y + 6 * SH_RH + 1, 7, 1, T_MID);
 }
 /* SEQ > STEP on a DRUM track: the grid, 8 lanes x the 16 steps of the page shown. Lanes by their two-letter
  * names (BD SD CP CH OH TM RS CB; CG CL CY on the other kits). A hit is a rounded square (accented: the
@@ -1191,9 +1268,9 @@ static uint32_t graph_signature(void)
         h ^= (fm6_pgen[(t - trk) % NTRK] + 1u) * 2246822519u + (fop_op + 1u) * 40503u + (fop_stg + 1u) * 7919u;
     if (pg->graph == GR_ROLL) {
         uint32_t ph = song.playing ? t->seq_idx : 0xFFFFu;
-        if (ph / 16u != ui.bank)
+        if (ph < pr_base() || ph >= pr_base() + pr_nv())
             ph = 0xFFFFu;                            /* the roll shows the cursor's bank only */
-        h ^= ui.sheet * 977u;
+        h ^= ui.sheet * 977u + ui.note_k * 40009u + (uint32_t)(ui.zoom + 4) * 1301u;
         h ^= steps_hash(t) + ph * 31u + ui.cursor * 7919u + ui.lane * 104723u + ui.bank * 613u +
              drum_mute[trk_index(t) % NPART] * 2654435761u;
         {                                            /* the parameter locks' marks (the roll, the grid) */
@@ -1753,7 +1830,7 @@ static void home_track_row(uint32_t c)
     track_t *t = &trk[c];
     const step_t *s = seq_steps(t);
     uint32_t sel = c == song.sel, mute = t->p[P_MUTE] != 0, large = (ui_prefs & PREF_LARGE) != 0u;
-    uint32_t len = (uint32_t)clamp(t->p[P_SLEN], 1, NSTEP), np = (len + 15u) / 16u, pg, p0, ph, i, sig, carry = 0;
+    uint32_t len = (uint32_t)clamp(t->p[P_SLEN], 1, NSTEP), np = (len + 15u) / 16u, pg, p0, ph, i, sig, carry = 0, sec;
     int32_t y = Y_GRAPH + (int32_t)(c - win_base()) * TR_PITCH, m, x, xr = 222, ch = large ? AF_M_CAP_H : AF_S_CAP_H;
     uint16_t bg = sel ? T_THEME : T_SURF, half = ux_mix(T_THEME, T_INK, 35);
     uint16_t cn = sel ? (mute ? ux_mix(T_THEME, T_INK, 55) : T_INK) : mute ? T_DIM : T_THEME;   /* a note */
@@ -1770,7 +1847,8 @@ static void home_track_row(uint32_t c)
     t->peak = 0;
     if (m < ts.meter[c] - 1)
         m = ts.meter[c] - 1;                         /* (falls as the MIXER's) */
-    sig = str_hash(1u + sel + mute * 2u + large * 4u + t->eng_req * 8u, b) + steps_hash(t) * 31u + pg * 7919u +
+    sec = chain.running && chain.lane[c] < 4u ? chain.lane[c] + 1u : 0u;   /* (SLOOP 2.8: the section playing, A..D) */
+    sig = str_hash(1u + sel + mute * 2u + large * 4u + t->eng_req * 8u + sec * 64u, b) + steps_hash(t) * 31u + pg * 7919u +
           ph * 104729u + len * 1299709u;
     if (!ui.force && sig == ts.col[c]) {
         if (m != ts.meter[c]) {                      /* the meter alone: its slot */
@@ -1790,6 +1868,14 @@ static void home_track_row(uint32_t c)
         xr -= kc_w(KC_MUTE);
         GFX_HOOK_ALIGN(0, TR_NY(large), 0, TR_NY(large) + ch, AL_V, "tracks row badge on the name's line");
         cv_keycap(xr, TR_NY(large) + (ch - KC_H) / 2, KC_MUTE, sel ? T_INK : T_KEY, sel ? T_THEME : T_INK, bg);
+        xr -= 6;
+    }
+    if (sec) {                                       /* a song plays: the slot's letter this track's section is on */
+        char lt[2] = {(char)('A' + sec - 1u), 0};
+        const aafont_t *lf = large ? &AF_M : &AF_S;
+        xr -= text_w(lf, lt);
+        GFX_HOOK_ALIGN(0, TR_NY(large), 0, TR_NY(large) + ch, AL_V, "tracks row section letter on the name's line");
+        cv_text_on(xr, TR_NY(large) - (large ? AF_M_CAP_Y : AF_S_CAP_Y), lf, lt, sel ? T_INK : T_ACCENT, bg);
         xr -= 6;
     }
     x = 24;
@@ -2221,11 +2307,9 @@ static void draw_graph(void)
             if (drum_track(t))
                 graph_grid(t, c);
             else
-            {
                 graph_roll(t, c);
-                if (ui.sheet)
-                    graph_sheet(t);
-            }
+            if (ui.sheet)
+                graph_sheet(t);
             break;
         case GR_SCALE:
             graph_scale(t, c);

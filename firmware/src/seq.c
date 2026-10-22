@@ -580,6 +580,7 @@ static void rec_hold(track_t *t, uint32_t idx, uint32_t len)
     s->flags = 0;
     s->vel = 0;
     s->hit = s->acc = 0;
+    s->lvl = s->rat = s->fx = 0;
 }
 
 /* a key of a recorded note is up: the hold ends with the last one */
