@@ -523,6 +523,7 @@ static void step_clear(step_t *st)
     st->vel = 0;
     st->hit = st->acc = 0;
     st->probability = 0;
+    st->lvl = st->rat = st->fx = 0;
 }
 
 /* LEN (1.5, Discussions #178, #173): a NOTE step's length on the piano roll is the step and the TIE steps after it
@@ -1121,6 +1122,7 @@ static void load_pat16(track_t *t, const uint8_t *note, const uint8_t *flags)
         s->vel = n ? 96 : 0;
         s->hit = s->acc = 0;
         s->probability = 0;
+        s->lvl = s->rat = s->fx = 0;
         if (drum_track(t))                           /* a DRUM track: the lanes' notes as its grid */
             step_to_grid(s);
     }

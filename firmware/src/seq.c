@@ -451,12 +451,12 @@ static uint32_t step_samples(const track_t *t, uint32_t period, uint32_t idx)
     return swing_step_len(t, period, idx);   /* core.h: own + global, at most 100 */
 }
 
-/* NUDGE (1.2, #162): a note `off` samples from the start of the step it goes into, in 1/NUDGE_DIV of the step (period),
- * rounded (step_set_nudge keeps -8..+7): the first note of a fresh step sets it; QUANTIZE (P_SQNT) decides whether it
+/* NUDGE (1.2, #162): a note `off` samples from the start of the step it goes into, in 1/MICRO_DIV of the step (period),
+ * rounded (step_set_micro keeps -32..+31): the first note of a fresh step sets it; QUANTIZE (P_SQNT) decides whether it
  * plays (not inlined: its divide stays out of the audio ISR's loops) */
 static __attribute__((noinline)) int32_t rec_nudge(int32_t off, uint32_t period)
 {
-    return (off * NUDGE_DIV + (off < 0 ? -(int32_t)period / 2 : (int32_t)period / 2)) / (int32_t)(period ? period : 1u);
+    return (off * MICRO_DIV + (off < 0 ? -(int32_t)period / 2 : (int32_t)period / 2)) / (int32_t)(period ? period : 1u);
 }
 
 /* live recording: the note goes into the nearest step, as swung (the one playing, or
@@ -487,7 +487,8 @@ static void rec_note(track_t *t, uint32_t note, uint32_t vel)
             s->n = s->hit = s->acc = 0;
             s->flags = 0;
             s->vel = 0;
-            step_set_nudge(s, off);
+            s->lvl = s->rat = s->fx = 0;
+            step_set_micro(s, off);
         }
         s->time = ST_NOTE;
         if (note == DRUM_LANE_NOTE[l]) {            /* a lane's note: its hit */
@@ -521,7 +522,8 @@ static void rec_note(track_t *t, uint32_t note, uint32_t vel)
         s->n = 0;                                   /* a fresh step */
         s->flags = 0;
         s->vel = 0;
-        step_set_nudge(s, off);
+        s->lvl = s->rat = s->fx = 0;
+        step_set_micro(s, off);
     }
     for (k = 0; k < s->n && s->note[k] != note; k++)
         ;
@@ -836,6 +838,11 @@ static void seq_start(void)
     perf_start();                                  /* perform.c: its 1/16 grid too */
 }
 
+/* step conditions (SLOOP 2.4 fill), below: fill_held GLO + key 9 held, fill_arm key 10 (the bar that starts next is a fill),
+ * fill_bar_on that bar while it plays, fill_now read once a block (events_block) */
+static volatile uint8_t fill_held, fill_arm;
+static uint8_t fill_bar_on, fill_now;
+
 static void seq_release(track_t *t)
 {
     uint32_t i;
@@ -864,6 +871,7 @@ static void seq_stop(void)
         trk[i].nd_late = trk[i].nd_early = ND_NONE;   /* (a nudged step not played yet: not after the stop) */
         trk[i].nd_fired = 0;
     }
+    fill_held = fill_arm = fill_bar_on = fill_now = 0;   /* STOP ends a fill, held or armed */
     chain_stop();
     motion_end();
 }
@@ -876,6 +884,36 @@ static void seq_stop(void)
  * part retriggered with GATE of the part; the chance is rolled once for the whole step (a failed roll: no part),
  * a slide into it glides into the first part only, and it never slides or ties out (its last part ends at its
  * gate). x1, what every older pattern holds, is the step exactly as before. */
+/* SLOOP 2.8: a note's force (the step's lvl, 2 bits a note) over the step's velocity: ghost, soft, hard; NORM plays as the
+ * step (VEL, the accent) says */
+static uint32_t lvl_vel(uint32_t lvl, uint32_t vel)
+{
+    static const uint8_t V[4] = {0, 42, 72, 127};
+    return lvl & 3u ? V[lvl & 3u] : vel;
+}
+/* the hits note i of step s plays in its step: its own ratchet (rat), else the step's RATCH */
+static uint32_t note_hits(const step_t *s, uint32_t i, uint32_t step_hits)
+{
+    uint32_t r = step_nrat(s, i);
+    return r ? r + 1u : step_hits;
+}
+/* the step has a note with a ratchet of its own: the parts are per note (seq_ratchet_notes) */
+static uint32_t step_nrat_any(const step_t *s)
+{
+    uint32_t i;
+    for (i = 0; i < s->n && i < 4u; i++)
+        if (step_nrat(s, i))
+            return 1;
+    return 0;
+}
+/* step conditions (SLOOP 2.4 fill): GLO + key 9 held (fill_held), or key 10 for the next bar (fill_arm: the bar that
+ * starts next is a fill, fill_bar_on while it plays); FC_FILL steps play only during a fill, FC_NOFILL steps only
+ * outside one. fill_now: read once a block (events_block) */
+static uint32_t step_plays(const step_t *s)
+{
+    uint32_t c = step_fill(s);
+    return c == FC_FILL ? fill_now : c == FC_NOFILL ? !fill_now : 1u;
+}
 #define SEQ_REP (1u << 16)
 #define SEQ_ROLLED (1u << 17)   /* seq_tick rolled the chance already (before the step's parameter locks): it passed */
 #define SEQ_MISS (1u << 18)     /* .. it failed: nothing plays */
@@ -888,13 +926,14 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
     uint32_t next_tie = seq_steps(t)[(idx + 1u) % len].time == ST_TIE;
     uint32_t hits = step_ratchet(s);
     uint8_t nn[4 + NLANE], vv[4 + NLANE];           /* the notes it plays: its notes, then its hits */
-    uint32_t m = 0, sk = 0;
+    uint32_t m = 0, sk = 0, pn = s->time == ST_NOTE && step_nrat_any(s) && !(skip & SEQ_REP);   /* per-note ratchet */
     /* QNT SEQ: the step's notes (not the lane hits) snap to the scale as they play; never on a drum kit, the slices
      * or another engine that maps the keys itself. seq_notes keeps the notes that sound: their note-offs match */
     const engine_t *e = ENGINES[eng_idx(t->eng_req)];
     uint32_t qseq = t->p[P_QUANT] == QN_SEQ && !(e->keys && e->keys(t, 0) >= 0);
     if (!(skip & SEQ_REP)) {
         t->rat_left = 0;
+        t->rn_on = 0;
         if ((skip & SEQ_MISS) ||
             (!(skip & SEQ_ROLLED) && step_chance(s) < 100u && rng() % 100u >= step_chance(s))) {
             seq_release(t);
@@ -912,11 +951,24 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
         seq_release(t);
         return;
     }
-    if (hits > 1u) {                                /* RATCH: the gate of a part, no slide or tie out */
+    if (pn) {                                       /* a note's own ratchet: its parts, gated by its own length */
+        uint32_t len_s = step_samples(t, period, idx);
+        gate = 0;
+        for (i = 0; i < s->n && i < 4u; i++) {
+            uint32_t h = note_hits(s, i, hits), g = len_s / h * (uint32_t)t->p[P_SGATE] / 128u;
+            t->rat_off[i] = g ? g : 1u;
+            t->rat_done[i] = 1;
+            gate = g > gate ? g : gate;
+        }
+        t->rat_left = 1;
+        t->rn_on = 1;
+    } else if (hits > 1u) {                         /* RATCH: the gate of a part, no slide or tie out */
         gate = step_samples(t, period, idx) / hits * (uint32_t)t->p[P_SGATE] / 128u;
         if (!(skip & SEQ_REP))
             t->rat_left = (uint8_t)(hits - 1u);
     }
+    if (!(skip & SEQ_REP))
+        memset(t->rn_note, 0, sizeof t->rn_note);
     for (i = 0; i < s->n && i < 4u; i++) {
         uint32_t x = s->note[i];
         if (qseq) {                                 /* QNT SEQ: onto the scale now; two notes snapping */
@@ -927,7 +979,11 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
                 continue;
         }
         nn[m] = (uint8_t)x;
-        vv[m] = (uint8_t)vel;
+        vv[m] = (uint8_t)lvl_vel(step_lvl(s, i), vel);
+        if (pn) {
+            t->rn_note[i] = (uint8_t)x;
+            t->rn_vel[i] = vv[m];
+        }
         sk |= ((skip >> i) & 1u) << m;
         m++;
     }
@@ -956,7 +1012,7 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
         if (!((sk >> i) & 1u))
             t->seq_notes[t->seq_n++] = nn[i];
     t->seq_off = gate;
-    t->seq_hold = hits == 1u && ((s->flags & SF_SLIDE) != 0 || next_tie);   /* next step a TIE: keep the notes to it */
+    t->seq_hold = hits == 1u && !t->rn_on && ((s->flags & SF_SLIDE) != 0 || next_tie);   /* next step a TIE: keep the notes to it */
 }
 
 /* MENU > CONTROL > STEP PREVIEW (1.2, Discussion #169): the UI asks for a step of a track to sound once (aud_req: step
@@ -984,10 +1040,44 @@ static __attribute__((noinline)) void seq_audition(void)
 
 /* RATCH: the next part of the playing step once the sequencer is that far into it (seq_step played the first).
  * The step is read again: an edit to fewer parts (or another source in a song) ends the repeats */
-static __attribute__((noinline)) void seq_ratchet(track_t *t, uint32_t period)
+/* the notes of a step with a ratchet of its own (rn_on): note i plays part j once the step is j / hits_i of its way, its
+ * note-off GATE of its part after it. Re-reads the step: an edit that ends the ratchets ends the repeats */
+static __attribute__((noinline)) void seq_ratchet_notes(track_t *t, const step_t *s, uint32_t period, uint32_t n)
+{
+    uint32_t len = step_samples(t, period, t->seq_idx), hits = step_ratchet(s), i, left = 0;
+    for (i = 0; i < 4u; i++) {
+        uint32_t h;
+        if (!t->rn_note[i])
+            continue;
+        if (t->rat_off[i]) {
+            if (t->rat_off[i] <= n) {
+                trk_note_off(t, t->rn_note[i]);
+                t->rat_off[i] = 0;
+            } else {
+                t->rat_off[i] -= n;
+            }
+        }
+        h = i < s->n ? note_hits(s, i, hits) : 1u;
+        if (t->rat_done[i] < h && t->seq_pos >= t->rat_done[i] * (len / h)) {
+            uint32_t g = len / h * (uint32_t)t->p[P_SGATE] / 128u;
+            trk_note_off(t, t->rn_note[i]);
+            trk_note_on(t, t->rn_note[i], t->rn_vel[i]);
+            t->rat_off[i] = g ? g : 1u;
+            t->rat_done[i]++;
+        }
+        left |= (t->rat_done[i] < h) | (t->rat_off[i] != 0u);
+    }
+    if (!left)
+        t->rat_left = 0;
+}
+static __attribute__((noinline)) void seq_ratchet(track_t *t, uint32_t period, uint32_t n)
 {
     const step_t *s = &seq_steps(t)[t->seq_idx];
     uint32_t hits = step_ratchet(s);
+    if (t->rn_on) {
+        seq_ratchet_notes(t, s, period, n);
+        return;
+    }
     if (t->rat_left >= hits) {
         t->rat_left = 0;
         return;
@@ -998,13 +1088,13 @@ static __attribute__((noinline)) void seq_ratchet(track_t *t, uint32_t period)
     seq_step(t, s, t->seq_idx, period, SEQ_REP);
 }
 
-/* the nudge of step s in 1/NUDGE_DIV of the step (NUDGE, core.h) when it plays off its start: the track's QUANTIZE OFF,
+/* the nudge of step s in 1/MICRO_DIV of the step (step_micro, core.h) when it plays off its start: the track's QUANTIZE OFF,
  * a NOTE step that plays something, x1 (a ratcheted step's parts divide the step: on its start); else 0 */
 static int32_t seq_nudge(const track_t *t, const step_t *s)
 {
-    if (t->p[P_SQNT] || s->time != ST_NOTE || (!s->n && !s->hit) || step_ratchet(s) != 1u)
+    if (t->p[P_SQNT] || s->time != ST_NOTE || (!s->n && !s->hit) || step_ratchet(s) != 1u || step_nrat_any(s))
         return 0;
-    return step_nudge(s);
+    return step_micro(s);
 }
 
 /* the automation a track plays: its slot's while a song plays (song_chain.c lanes; 0: a silent lane, none) */
@@ -1022,7 +1112,9 @@ static __attribute__((noinline)) void seq_play(track_t *t, uint32_t idx, uint32_
     const step_t *s = &seq_steps(t)[idx];
     const motion_store_t *m = chain_motion(t);
     uint32_t skip = SEQ_ROLLED, i, k;
-    if (step_chance(s) < 100u && rng() % 100u >= step_chance(s))
+    if (!step_plays(s))                             /* its fill condition fails: as a REST, no lock, no roll */
+        skip = SEQ_MISS;
+    else if (step_chance(s) < 100u && rng() % 100u >= step_chance(s))
         skip = SEQ_MISS;
     if (m)
         motion_step(t, idx, m, skip == SEQ_ROLLED);
@@ -1040,7 +1132,7 @@ static __attribute__((noinline)) void seq_play(track_t *t, uint32_t idx, uint32_
     seq_step(t, s, idx, period, skip);
 }
 
-/* NUDGE (1.2, #162; QUANTIZE OFF): a step plays at its start + nudge x DIV / 16. When a step starts its own late play
+/* NUDGE (1.2, #162; QUANTIZE OFF): a step plays at its start + nudge x DIV / 64 (step_micro). When a step starts its own late play
  * (nd_late) and the next step's early one (nd_early: that much before the end of this one) are latched; an early
  * play marks the step (nd_fired), whose start then plays nothing. A late play falls before the next start (at most
  * 7/16 of the step, the shortest swung step is 0.6 of it); an early one never before the late one of the step before.
@@ -1072,12 +1164,12 @@ static __attribute__((noinline)) void seq_nd_start(track_t *t, uint32_t period, 
     if (t->nd_fired == t->seq_idx + 1u)
         ;                                           /* (it played early) */
     else if ((d = seq_nudge(t, &seq_steps(t)[t->seq_idx])) > 0)
-        t->nd_late = (uint32_t)d * period / NUDGE_DIV + 1u;
+        t->nd_late = (uint32_t)d * period / MICRO_DIV + 1u;
     else
         seq_play(t, t->seq_idx, period);
     t->nd_fired = 0;
     if ((!chain.running || nx) && (d = seq_nudge(t, &seq_steps(t)[nx])) < 0) {
-        uint32_t at = step_samples(t, period, t->seq_idx), back = (uint32_t)-d * period / NUDGE_DIV;
+        uint32_t at = step_samples(t, period, t->seq_idx), back = (uint32_t)-d * period / MICRO_DIV;
         at = (at > back ? at - back : 0u) + 1u;
         t->nd_early = at < t->nd_late ? t->nd_late : at;   /* (never before this step's own late play) */
     }
@@ -1113,7 +1205,7 @@ static void seq_tick(track_t *t, uint32_t n)
             seq_nd_start(t, period, len);
     }
     if (t->rat_left)
-        seq_ratchet(t, period);
+        seq_ratchet(t, period, n);
 }
 
 /* MIDI in: the track a channel plays (0..15): G_ROUTE CH1-4 (0) channels 1..4 their parts (5..16 never get
@@ -1186,6 +1278,10 @@ static void click_tick(uint32_t adv)
             if (!(clk_step & 3u))
                 beat = clk_step ? 1u : 2u;
         }
+    }
+    if (beat == 2u) {                               /* a bar starts: the armed fill is this bar's */
+        fill_bar_on = fill_arm;
+        fill_arm = 0;
     }
     if (beat && click_wanted())
         click_req = (uint8_t)beat;
@@ -1308,13 +1404,14 @@ static void events_block(uint32_t n)
     }
     if (aud_req)
         seq_audition();                               /* (STEP PREVIEW: a step sounds, stopped) */
+    if (song.playing)
+        click_tick(seq_n);                          /* (before the steps: a bar's first block knows its fill) */
+    fill_now = (uint8_t)(fill_held || fill_bar_on);
     chain_tick(seq_n);
     for (i = 0; i < NTRK; i++)
         seq_tick(&trk[i], seq_n);
     if (cin_flush)
         cin_record();
-    if (song.playing)
-        click_tick(seq_n);
     for (i = 0; i < NPART; i++)
         arp_step(&trk[i], clock_mode ? seq_n : n, clock_mode && song.playing ? seq_n : n);
     beat_pos += clock_mode ? seq_n : n;               /* the beat the ARP LED flashes on (ui_leds) */

@@ -164,7 +164,7 @@ static int pack_merge(void)
     bad += check("FUN10 alone: tracks 1..4 and their events as ever; tracks 5 and 6 come back as at power-on",
                  ok && same_track(&a, &b, 0) && same_track(&a, &b, 3) && defaults_5_6(&b) && motion_of(&b, 0, NPROJ, 0) == 2u);
     projx_pack(&x, &a);
-    ok = x.magic == PROJX_MAGIC && x.size == sizeof x && x.parts == NTRK && x.mcount == 4u && x.sum == projx_sum(&x);
+    ok = x.magic == PROJX_MAGIC2 && x.size == sizeof x && x.parts == NTRK && x.mcount == 4u && x.sum == projx_sum(&x);
     bad += check("projx_pack: tracks 5 and 6, their 4 events (and no event of tracks 1..4), the checksum", ok);
     ok = projx_merge(&b, &x);
     for (i = 0; i < NTRK; i++)
@@ -371,9 +371,59 @@ static int autosave(void)
     return bad;
 }
 
+/* SLOOP 2.8's step bytes (lvl, rat, fx): tracks 1..4 keep them in the extension's ex block, tracks 5 and 6 in their steps;
+ * a FUNX written before them (11-byte steps) still loads: its steps as they were, tracks 1..4 without the extras */
+static int step_extras(void)
+{
+    int bad = 0, ok;
+    static project_x_t x;
+    static project_x1_t o;
+    static project_t a, b;
+    uint32_t i, k;
+    make_music();
+    trk[0].step[3].lvl = 0x1B; trk[0].step[3].rat = 0x06; trk[0].step[3].fx = 0x09;
+    trk[3].step[60].lvl = 0xC0; trk[3].step[60].rat = 0x03; trk[3].step[60].fx = 0x06;
+    trk[4].step[7].lvl = 0x24; trk[4].step[7].rat = 0x0C; trk[4].step[7].fx = 0x0A;
+    trk[5].step[63].lvl = 0x03; trk[5].step[63].rat = 0x30; trk[5].step[63].fx = 0x05;
+    ok = project_save(1) == 0;
+    power_cycle();
+    memset(proj_slot, 0, sizeof proj_slot);
+    project_load(1);
+    ok &= trk[0].step[3].lvl == 0x1B && trk[0].step[3].rat == 0x06 && trk[0].step[3].fx == 0x09 &&
+          trk[3].step[60].lvl == 0xC0 && trk[3].step[60].rat == 0x03 && trk[3].step[60].fx == 0x06 &&
+          trk[4].step[7].lvl == 0x24 && trk[4].step[7].rat == 0x0C && trk[4].step[7].fx == 0x0A &&
+          trk[5].step[63].lvl == 0x03 && trk[5].step[63].rat == 0x30 && trk[5].step[63].fx == 0x05 &&
+          !trk[0].step[4].lvl && !trk[2].step[9].fx;
+    bad += check("step extras: lvl / rat / fx of tracks 1..4 (the extension's ex block) and 5, 6 (their steps) saved and loaded", ok);
+    /* the extension of the old firmware in its place */
+    ok = st_load(OBJ_PROJX0 + 1, &projx_buf, sizeof projx_buf) == (int)sizeof projx_buf;
+    x = projx_buf;
+    memset(&o, 0, sizeof o);
+    o.magic = PROJX_MAGIC; o.size = sizeof o; o.parts = x.parts; o.link = x.link;
+    for (i = 0; i < NPROJX; i++) {
+        memcpy(o.t[i].p, x.t[i].p, sizeof o.t[i].p);
+        o.t[i].engine = x.t[i].engine; o.t[i].preset = x.t[i].preset;
+        for (k = 0; k < NSTEP; k++)
+            memcpy(&o.t[i].step[k], &x.t[i].step[k], sizeof(step11_t));
+    }
+    memcpy(o.fm6, x.fm6, sizeof o.fm6); memcpy(o.cslot, x.cslot, sizeof o.cslot);
+    o.mcount = x.mcount; memcpy(o.mev, x.mev, sizeof o.mev);
+    o.sum = proj_hash(&o, sizeof o - 4u);
+    ok &= st_save(OBJ_PROJX0 + 1, &o, sizeof o) == 0;
+    power_cycle();
+    memset(proj_slot, 0, sizeof proj_slot);
+    project_load(1);
+    ok &= trk[4].eng_req == 18u && trk[4].p[P_E5] == 33 && trk[4].step[7].n == x.t[0].step[7].n && !trk[4].step[7].lvl &&
+          !trk[4].step[7].fx && !trk[0].step[3].lvl && !trk[0].step[3].fx && motion.count == 6u &&
+          !memcmp(trk[5].step, x.t[1].step, 0) && trk[5].p[P_SLEN] == 64;
+    bad += check("a FUNX of before the extras (11-byte steps): tracks 5 and 6 load as they were, no extras anywhere", ok);
+    (void)a; (void)b;
+    return bad;
+}
+
 int main(void)
 {
-    int bad = pack_merge() + flash_roundtrip() + old_era() + damaged() + stale_extension() + autosave();
+    int bad = step_extras() + pack_merge() + flash_roundtrip() + old_era() + damaged() + stale_extension() + autosave();
     printf("%s\n", bad ? "SIX-TRACK PROJECT TEST FAILED" : "six-track project test passed");
     return bad != 0;
 }

@@ -638,8 +638,23 @@ static void proj_motion_to_wire(motion_wire_t *w, const motion_store_t *m)   /* 
     w->count = (uint8_t)n;
 }
 
-#define PROJX_MAGIC 0x58554E46u                /* "FUNX": the extension of a FUN10 (tracks 5 and 6) */
+#define PROJX_MAGIC 0x58554E46u                /* "FUNX": the extension of a FUN10 (tracks 5 and 6), read only since SLOOP's steps */
+#define PROJX_MAGIC2 0x59554E46u               /* "FUNY": FUNX with the steps of 14 bytes and, for tracks 1..4, their extra bytes */
 #define NPROJX (NTRK - NPROJ)
+typedef struct { uint8_t note[4], n, time, flags, vel, hit, acc, probability; } step11_t;   /* a step before SLOOP's lvl / rat / fx */
+typedef struct { int16_t p[P_COUNT]; uint8_t engine, preset; step11_t step[NSTEP]; } proj_trk1_t;
+typedef struct {                               /* FUNX, as 1.5 .. 1.6 wrote it (frozen; read only) */
+    uint32_t magic, size;
+    uint8_t parts, rsv[3];
+    uint32_t link;
+    proj_trk1_t t[NPROJX];
+    uint8_t fm6[NPROJX][FM6_PACKED];
+    uint8_t cslot[CHAIN_ROWS][NPROJX];
+    uint8_t mcount, mrsv[3];
+    motion_event_t mev[MOTION_MAX];
+    uint32_t sum;
+} project_x1_t;
+_Static_assert(sizeof(project_x1_t) == 2680u, "FUNX as it was stored");
 typedef struct {
     uint32_t magic, size;
     uint8_t parts, rsv[3];                     /* NTRK */
@@ -649,6 +664,7 @@ typedef struct {
     uint8_t cslot[CHAIN_ROWS][NPROJX];         /* the sections' slots of tracks 5 and 6 (CHAIN_SILENT: "-") */
     uint8_t mcount, mrsv[3];                   /* their automation and locks: the records of motion_store_t */
     motion_event_t mev[MOTION_MAX];
+    uint8_t ex[NPROJ][NSTEP][3];               /* tracks 1..4: each step's lvl, rat, fx (FUN10's 9-byte steps hold none) */
     uint32_t sum;
 } project_x_t;
 _Static_assert(sizeof(project_x_t) <= 3840u, "the project extension fits a storage object");
@@ -842,12 +858,12 @@ static int proj_unpack(project_t *q, const uint8_t *b, uint32_t st)
     return 1;
 }
 
-/* the extension of q (tracks 5 and 6, their sections' slots and events) -> x */
+/* the extension of q (tracks 5 and 6, their sections' slots and events, tracks 1..4's extra step bytes) -> x */
 static void projx_pack(project_x_t *x, const project_t *q)
 {
     uint32_t i, k, n = 0;
     memset(x, 0, sizeof *x);
-    x->magic = PROJX_MAGIC;
+    x->magic = PROJX_MAGIC2;
     x->size = sizeof *x;
     x->parts = NTRK;
     x->link = q->xlink;
@@ -855,6 +871,12 @@ static void projx_pack(project_x_t *x, const project_t *q)
         x->t[i] = q->t[NPROJ + i];
         memcpy(x->fm6[i], q->fm6[NPROJ + i], FM6_PACKED);
     }
+    for (i = 0; i < NPROJ; i++)
+        for (k = 0; k < NSTEP; k++) {
+            x->ex[i][k][0] = q->t[i].step[k].lvl;
+            x->ex[i][k][1] = q->t[i].step[k].rat;
+            x->ex[i][k][2] = q->t[i].step[k].fx;
+        }
     for (i = 0; i < CHAIN_ROWS; i++)
         for (k = 0; k < NPROJX; k++)
             x->cslot[i][k] = q->chain.row[i].slot[NPROJ + k];
@@ -864,35 +886,86 @@ static void projx_pack(project_x_t *x, const project_t *q)
     x->mcount = (uint8_t)n;
     x->sum = projx_sum(x);
 }
-/* x -> tracks 5 and 6 of q (after q was imported: proj_x_defaults); 0 = not an extension of this firmware (q untouched) */
-static int projx_merge(project_t *q, const project_x_t *x)
+/* the checks both layouts share: the extension belongs to q (its link), names engines and tracks that exist, and its
+ * motion records fit beside the project's own */
+static int projx_fits(const project_t *q, uint32_t link, uint32_t parts, const uint8_t *eng, uint32_t mcount, const motion_event_t *mev)
 {
-    uint32_t i, k, n = 0;
-    if (x->magic != PROJX_MAGIC || x->size != sizeof *x || x->parts != NTRK || x->sum != projx_sum(x) || !q->xlink || x->link != q->xlink ||
-        x->mcount > MOTION_MAX)
+    uint32_t i, n = 0;
+    if (parts != NTRK || !q->xlink || link != q->xlink || mcount > MOTION_MAX)
         return 0;
     for (i = 0; i < NPROJX; i++)
-        if (x->t[i].engine >= NENGINES)
+        if (eng[i] >= NENGINES)
             return 0;
-    for (i = 0; i < x->mcount; i++)
-        if ((x->mev[i].place >> 6) < NPROJ || (x->mev[i].place >> 6) >= NTRK)
+    for (i = 0; i < mcount; i++)
+        if ((mev[i].place >> 6) < NPROJ || (mev[i].place >> 6) >= NTRK)
             return 0;
     for (i = 0; i < q->motion.count && i < MOTION_MAX; i++)
         if ((q->motion.event[i].place >> 6) < NPROJ)
             n++;
-    if (n + x->mcount > MOTION_MAX)
-        return 0;
-    for (i = 0; i < NPROJX; i++) {
-        q->t[NPROJ + i] = x->t[i];
+    return n + mcount <= MOTION_MAX;
+}
+static void projx_slots(project_t *q, const uint8_t (*fm6)[FM6_PACKED], const uint8_t (*cslot)[NPROJX], uint32_t mcount,
+                        const motion_event_t *mev)
+{
+    uint32_t i, k, n = 0;
+    for (i = 0; i < NPROJX; i++)
         for (k = 0; k < FM6_PACKED; k++)
-            q->fm6[NPROJ + i][k] = x->fm6[i][k] & 0x7Fu;
-    }
+            q->fm6[NPROJ + i][k] = fm6[i][k] & 0x7Fu;
     for (i = 0; i < CHAIN_ROWS; i++)
         for (k = 0; k < NPROJX; k++)
-            q->chain.row[i].slot[NPROJ + k] = x->cslot[i][k] <= CHAIN_SILENT ? x->cslot[i][k] : (uint8_t)CHAIN_SILENT;
-    for (i = 0; i < x->mcount; i++)
-        q->motion.event[n++] = x->mev[i];
+            q->chain.row[i].slot[NPROJ + k] = cslot[i][k] <= CHAIN_SILENT ? cslot[i][k] : (uint8_t)CHAIN_SILENT;
+    for (i = 0; i < q->motion.count && i < MOTION_MAX; i++)
+        if ((q->motion.event[i].place >> 6) < NPROJ)
+            n++;
+    for (i = 0; i < mcount; i++)
+        q->motion.event[n++] = mev[i];
     q->motion.count = (uint8_t)n;
+}
+/* x -> tracks 5 and 6 of q (after q was imported: proj_x_defaults) and the extra bytes of the steps of tracks 1..4;
+ * 0 = not an extension of this firmware (q untouched) */
+static int projx_merge(project_t *q, const project_x_t *x)
+{
+    uint32_t i, k;
+    uint8_t eng[NPROJX];
+    if (x->magic != PROJX_MAGIC2 || x->size != sizeof *x || x->sum != projx_sum(x))
+        return 0;
+    for (i = 0; i < NPROJX; i++)
+        eng[i] = x->t[i].engine;
+    if (!projx_fits(q, x->link, x->parts, eng, x->mcount, x->mev))
+        return 0;
+    for (i = 0; i < NPROJX; i++)
+        q->t[NPROJ + i] = x->t[i];
+    for (i = 0; i < NPROJ; i++)
+        for (k = 0; k < NSTEP; k++) {
+            q->t[i].step[k].lvl = x->ex[i][k][0];
+            q->t[i].step[k].rat = x->ex[i][k][1];
+            q->t[i].step[k].fx = x->ex[i][k][2] & 15u;
+        }
+    projx_slots(q, x->fm6, x->cslot, x->mcount, x->mev);
+    q->sum = proj_sum(q);
+    return 1;
+}
+/* FUNX (tracks 5 and 6 as before the steps grew: no extra bytes, every step as it was) */
+static int projx1_merge(project_t *q, const project_x1_t *x)
+{
+    uint32_t i, k;
+    uint8_t eng[NPROJX];
+    if (x->magic != PROJX_MAGIC || x->size != sizeof *x || x->sum != proj_hash(x, sizeof *x - 4u))
+        return 0;
+    for (i = 0; i < NPROJX; i++)
+        eng[i] = x->t[i].engine;
+    if (!projx_fits(q, x->link, x->parts, eng, x->mcount, x->mev))
+        return 0;
+    for (i = 0; i < NPROJX; i++) {
+        proj_trk_t *d = &q->t[NPROJ + i];
+        memset(d, 0, sizeof *d);
+        memcpy(d->p, x->t[i].p, sizeof d->p);
+        d->engine = x->t[i].engine;
+        d->preset = x->t[i].preset;
+        for (k = 0; k < NSTEP; k++)
+            memcpy(&d->step[k], &x->t[i].step[k], sizeof(step11_t));
+    }
+    projx_slots(q, x->fm6, x->cslot, x->mcount, x->mev);
     q->sum = proj_sum(q);
     return 1;
 }
@@ -941,8 +1014,14 @@ static project_x_t projx_buf __attribute__((section(".pool")));   /* an extensio
  * firmware, a slot never saved here): q keeps them as proj_x_defaults made them */
 static void proj_x_load(project_t *q, uint32_t obj)
 {
-    if (flash_ok && st_load(obj, &projx_buf, sizeof projx_buf) == (int)sizeof projx_buf)
+    int n;
+    if (!flash_ok)
+        return;
+    n = st_load(obj, &projx_buf, sizeof projx_buf);
+    if (n == (int)sizeof projx_buf)
         (void)projx_merge(q, &projx_buf);
+    else if (n == (int)sizeof(project_x1_t))            /* (saved before SLOOP's steps: read as it was) */
+        (void)projx1_merge(q, (const project_x1_t *)&projx_buf);
 }
 static int proj_x_save(const project_t *q, uint32_t obj)    /* 0 saved */
 {
@@ -986,6 +1065,7 @@ static void proj_bound(project_t *q)
             s->flags &= 3u | SF_RATCH | SF_NUDGE;
             s->vel &= 127u;
             if (s->probability > 101u) s->probability = 0;
+            s->fx &= 15u;
         }
         for (i = 0; i < P_COUNT; i++) {
             const param_desc_t *d = param_desc_of(q->t[t].engine % NENGINES, i);

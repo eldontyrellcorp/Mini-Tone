@@ -301,6 +301,9 @@ typedef struct {                 /* acid-style step: up to 4 notes (POLY), time,
     uint8_t hit;                 /* bit l: lane l hits (its GM note, on any engine): the DRUM grid */
     uint8_t acc;                 /* bit l: that hit is accented (velocity 127) */
     uint8_t probability;         /* 0 = legacy 100%; 1..100 = percent, 101 = silent */
+    uint8_t lvl;                 /* (SLOOP 2.8) 2 bits per note, note k at bits 2k..2k+1: its LV_* force; 0 = as the step's VEL */
+    uint8_t rat;                 /* 2 bits per note: that note's own ratchet - 1 (0: the step's RATCH) */
+    uint8_t fx;                  /* bits 0..1: the step's condition (FC_*); bits 2..3: its NUDGE's quarter (step_micro) */
 } step_t;
 typedef struct {                 /* a step as formats 1..4 (projects to FUN4) stored it: no hits */
     uint8_t note[4];
@@ -333,6 +336,35 @@ static void step_set_nudge(step_t *s, int32_t v)
 {
     uint32_t u = (uint32_t)(v < -8 ? -8 : v > 7 ? 7 : v) & 15u;
     s->flags = (uint8_t)((s->flags & ~SF_NUDGE) | (u & 7u) << 5 | (u >> 1 & 4u));
+}
+/* SLOOP 2.8's per-note force and the condition (a step's fx / lvl / rat; every older pattern holds 0: as before) */
+enum { LV_NORM, LV_GHOST, LV_SOFT, LV_HARD };
+enum { FC_NORM, FC_FILL, FC_NOFILL };     /* plays always, only during a fill, never during one (3: as FC_NORM) */
+static uint32_t step_lvl(const step_t *s, uint32_t k) { return (s->lvl >> (2u * (k & 3u))) & 3u; }
+static void step_set_lvl(step_t *s, uint32_t k, uint32_t v)
+{
+    uint32_t sh = 2u * (k & 3u);
+    s->lvl = (uint8_t)((s->lvl & ~(3u << sh)) | (v & 3u) << sh);
+}
+static uint32_t step_nrat(const step_t *s, uint32_t k) { return (s->rat >> (2u * (k & 3u))) & 3u; }
+static void step_set_nrat(step_t *s, uint32_t k, uint32_t v)
+{
+    uint32_t sh = 2u * (k & 3u);
+    s->rat = (uint8_t)((s->rat & ~(3u << sh)) | (v & 3u) << sh);
+}
+static uint32_t step_fill(const step_t *s) { return (s->fx & 3u) == 3u ? FC_NORM : (uint32_t)(s->fx & 3u); }
+static void step_set_fill(step_t *s, uint32_t v) { s->fx = (uint8_t)((s->fx & ~3u) | (v > 2u ? 0u : v)); }
+/* SLOOP's micro timing: a step's nudge in 1/MICRO_DIV of the step, -32..+31 (a quarter of NUDGE's sixteenth: the
+ * nudge's own bits and the quarter in fx) */
+#define MICRO_DIV 64
+#define MICRO_MIN (-32)
+#define MICRO_MAX 31
+static int32_t step_micro(const step_t *s) { return step_nudge(s) * 4 + (int32_t)((s->fx >> 2) & 3u); }
+static void step_set_micro(step_t *s, int32_t v)
+{
+    v = v < MICRO_MIN ? MICRO_MIN : v > MICRO_MAX ? MICRO_MAX : v;
+    step_set_nudge(s, v >> 2);
+    s->fx = (uint8_t)((s->fx & ~12u) | (uint32_t)(v & 3) << 2);
 }
 #define MOTION_MAX 128u          /* 1.2 (FUN10): 64 before */
 /* Four tracks x64 steps fit one byte. Values retain their signed parameter range (-64..127: an int8_t, 1.2).
@@ -428,7 +460,11 @@ typedef struct track {
     int32_t dist_hp, dist_lp1, dist_lp2;   /* DIST insert state (fx.c) */
     uint8_t tail;                /* blocks to mix after the last voice (the DIST / INSERT tail) */
     uint8_t ins_run;             /* the INSERT still sounds (fx.c track_insert: its wet share above 0) */
-    uint8_t rsv_sz[15];          /* (sizeof(track_t) a multiple of 16: below) */
+    /* (SLOOP 2.8) per-note ratchet (seq.c seq_step / seq_ratchet_notes): the parts each note of the playing step still plays */
+    uint32_t rat_off[4];         /* samples to the note-off of note i's part, 0 = none */
+    uint8_t rn_on;               /* the step playing ratchets per note (rat_left: its repeats are in rat_done) */
+    uint8_t rn_note[4], rn_vel[4], rat_done[4];   /* the notes it plays (0: none), their velocities, the parts played */
+    uint8_t rsv_sz[12];           /* (sizeof(track_t) a multiple of 16: below) */
     int16_t armp, aholdp;        /* P_AMODE / P_AHOLD as last seen by the ISR */
     /* engine switch (voice.c engine_block): the old engine's voices fade out, then it switches */
     uint8_t xf_on, xf;           /* fading; blocks of the fade still to render */
