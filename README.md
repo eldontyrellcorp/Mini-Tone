@@ -3,6 +3,28 @@
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-blue.svg)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/Sponsor-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/hugelton)
 
+## Mini-Tone 1.0.2
+
+What changed since 1.0.0 (the version shows in ABOUT, the console and the editor):
+
+- **A new SID engine**: a port of reSID 0.16 (bit-exact waveform generator, the 6581 / 8580 filters, the combined waveforms of the real chips),
+  with a MODEL switch and 26 presets that show what it can do (Engines, below)
+- **A shared resonant filter** in the Elektron engines (SWARM, FMTONE, WAVETONE, CHIP, DUALVCO, ANALOG4): CUT, RES and KEY, TYPE LP / BP / HP, up
+  to self-oscillation that follows the keys, on a FILTER page of its own (SWARM, FMTONE, WAVETONE, CHIP, DUALVCO) or in ANALOG4's two filters; 10 new presets.
+  A fix with it: an engine that fades out on a switch now keeps its own operator values, so the switch no longer clicks
+- **Delay TIME in dotted notes and milliseconds**, and **LEN any length from 1 to 64** (7 against 16 is a polyrhythm)
+- **FMTONE's algorithm diagram** on its EDIT pages, as FM6 has
+- **Sloop 2.8's sequencer features**, ported onto Mini-Tone's own steps (credits at the end):
+  - a **sheet** on SEQ > STEP and on the drum grid: hold OCT+ for NOTE, PITCH, LEN, FORCE, RATCH, SLIDE, NUDGE, FILL, MOVE, COPY and DELETE
+    (the drum grid's: ACC, RATCH, NUDGE, FILL, MOVE, COPY, DELETE); PRESETS zooms the roll to 8, 16, 32 or 64 steps
+  - **per-note force** (GHOST, SOFT, NORM, HARD, ACC) and **per-note ratchet** (each note of a chord x2..x4 on its own)
+  - **FILL conditions**: a step plays only during a fill, or only outside one; hold GLO + E4 for a fill, GLO + D#4 for the next bar
+  - **nudge in 64ths of a step** (it was sixteenths); live recording keeps your timing at that resolution
+  - the **playing section's letter** (A..D) on each row of HOME > TRACKS while a song plays
+  - the extra step data is saved with the project (in its extension; projects of 1.0.0 load as they were), not with user presets
+    or in the web editor
+- New host tests: `rsvf_test`, `poly_test`, `sheet_test`, `sloop_seq_test`; the full list is in `tests/run_tests.sh`
+
 ## Mini-Tone 1.0.0
 
 Mini-Tone is Stephane Schmitz's firmware, based on Felucca 1.5 by Leo Kuroshita (Hügelton Instruments), GPL-3.0-only. What
@@ -19,12 +41,6 @@ it changes:
   with a **TIME** of 16 note values (4BAR to 1/32, triplets, and the dotted 1/1D 1/2D 1/4D 1/8D 1/16D 1/32D) and then **1 to 1486 ms** off the
   grid (the tempo does not move them); the time glides to a new TIME (8 samples a block, a tape's glide) instead of clicking
 - **The ELEK reverb** (FX > REVERB TYPE ELEK, pages ELEK REV and ELEK REV 2: PRE DEC FRQ GAIN HPF LPF VOL)
-- **A shared resonant filter** in the Elektron engines (SWARM, FMTONE, WAVETONE, CHIP, DUALVCO, ANALOG4): CUT, RES and KEY, TYPE LP / BP / HP, up to
-  self-oscillation that follows the keys (Engines, below)
-- **Sloop 2.8's sequencer features**, ported onto Mini-Tone's own steps: a **sheet** on SEQ > STEP and the drum grid (hold OCT+), per-note
-  PITCH / LEN / FORCE / RATCH, **FILL** conditions with GLO fill keys, nudge in 64ths of a step, a roll **zoom** of 8 to 64 steps, MOVE / COPY / DELETE of a note
-  with its locks, and the playing section's letter on HOME > TRACKS (Controls and Features, below)
-- **FMTONE's algorithm diagram**: a small chart of the 8 algorithms on its EDIT pages, as FM6 has
 - **LEN any length, 1 to 64**, a step a detent (the knob went in blocks of 16): 7 against 16, 15 against 4 are polyrhythms, each track cycling on its own
   (tests/poly_test.c); themes by MENU > DISPLAY > COLOR
 - MIDI IN: CH1-6, SEL, CH5-10, CH9-14, CH13-16 (the block of channels the six tracks follow)
