@@ -524,11 +524,12 @@ static const param_desc_t RVX_DESC[RV_N] = {
 /* ------------------------------------------------------------ pages --- */
 enum { FAM_HOME, FAM_ENV, FAM_LFO, FAM_FX, FAM_SCL, FAM_EDIT, FAM_GLO, FAM_SAVE, FAM_ARP, FAM_SEQ, FAM_TRK,
        FAM_COUNT };
-enum { SC_TRACK, SC_GLOBAL, SC_ENGINE, SC_STEP, SC_TRK, SC_REVX };   /* SC_TRK: the TRACKS page (ui_input.c tracks_edit);
+enum { SC_TRACK, SC_GLOBAL, SC_ENGINE, SC_STEP, SC_TRK, SC_REVX, SC_STOCH };   /* SC_STOCH: the STOCHASTIC pages (ui_input.c stoch_edit) */
+#define SC_DUMMY_ /* */   /* SC_TRK: the TRACKS page (ui_input.c tracks_edit);
                                                                      * SC_REVX: the ELEK reverb's values (rvx_p) */
 enum { GR_NONE, GR_ADSR, GR_LFO, GR_STEPS, GR_ARP, GR_SCALE, GR_FX, GR_ROLL, GR_BROWSE, GR_SLOTS, GR_USER, GR_TRK,
        GR_SLCR, GR_MOD, GR_PATS, GR_SONG, GR_TOOLS, GR_CHORD, GR_SLICES, GR_EVENTS,
-       GR_FMOP, GR_FMOP2, GR_FMENV, GR_INS, GR_REVX };   /* (GR_STEPS: SEQ TOOLS' knobs; GR_FMOP..: FM6's operator pages, ui_fm6op.c) */
+       GR_FMOP, GR_FMOP2, GR_FMENV, GR_INS, GR_REVX, GR_STOCH };   /* (GR_STEPS: SEQ TOOLS' knobs; GR_FMOP..: FM6's operator pages, ui_fm6op.c) */
 
 typedef struct {
     const char *title;
@@ -618,6 +619,12 @@ static const page_t PAGES[] = {
     {"STEP", FAM_SEQ, SC_STEP, GR_ROLL, {0, 1, 2, 3}},
     {"AUTOMATION", FAM_SEQ, SC_TRACK, GR_EVENTS, {0xFF, 0xFF, 0xFF, 0xFF}},  /* the locks, events, CHANCE and RATCH as a
                                                                              * list, PLAY and CLEAR (ui_events.c) */
+    /* STOCHASTIC mode (after the OXI ONE's; core.h stoch_t, ui_input.c stoch_edit): MODE DENS GROOVE LOOP; NOTE WEIGHT OCT
+     * RANGE; VMIN VMAX RAT SLD; STACK SEED */
+    {"STOCH", FAM_SEQ, SC_STOCH, GR_STOCH, {0xFF, 0xFF, 0xFF, 0xFF}},
+    {"NOTES", FAM_SEQ, SC_STOCH, GR_STOCH, {0xFF, 0xFF, 0xFF, 0xFF}},
+    {"SHAPE", FAM_SEQ, SC_STOCH, GR_STOCH, {0xFF, 0xFF, 0xFF, 0xFF}},
+    {"STACK", FAM_SEQ, SC_STOCH, GR_STOCH, {0xFF, 0xFF, 0xFF, 0xFF}},
     /* HOME's pages (1.2): HOME tapped on HOME the MIXER (up to 1.1.5 GLO's; LEVEL PAN REV MUTE), again CLOCK (up to 1.1.5
      * GLO > GLOBAL; its TUNE is MENU > AUDIO's now), again HOME (ui.c home_tap) */
     {"MIXER", FAM_TRK, SC_TRK, GR_TRK, {0, 1, 2, 3}},
@@ -633,7 +640,7 @@ static const param_desc_t *page_desc(const page_t *pg, uint32_t slot, int16_t **
         *valp = 0;
         return 0;
     }
-    if (pg->scope == SC_STEP || pg->scope == SC_TRK) {
+    if (pg->scope == SC_STEP || pg->scope == SC_TRK || pg->scope == SC_STOCH) {
         *valp = 0;
         return 0;
     }

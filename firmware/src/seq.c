@@ -915,6 +915,88 @@ static uint32_t step_plays(const step_t *s)
     uint32_t c = step_fill(s);
     return c == FC_FILL ? fill_now : c == FC_NOFILL ? !fill_now : 1u;
 }
+/* ---- STOCHASTIC mode (core.h stoch_t): the step that plays now is drawn from the track's odds, into t->stoch_step.
+ * The chance the step plays is DENS, the downbeats of a bar of 4 steps +GROOVE / 2 points and the offbeats the same less; a
+ * note is a pitch class drawn by its weight (C..B; only the scale's: SCL ROOT / SCALE; a DRUM track draws its lanes from
+ * w[0..7]), in one of RANGE octaves from OCT, a velocity between VMIN and VMAX; then RAT may ratchet it, SLD slide it, STACK
+ * add up to two more notes. LOOP 0: every draw from the free generator; LOOP n: from a generator seeded with the track's
+ * SEED at each nth step, so the same n steps come again and again until REROLL draws another SEED */
+static stoch_t *stoch_of(track_t *t)
+{
+    if (!t->stoch.vmax)
+        stoch_defaults(&t->stoch);
+    return &t->stoch;
+}
+static uint32_t stoch_rand(track_t *t, uint32_t n)
+{
+    if (!t->stoch.loop)
+        return rng() % n;
+    t->stoch_rs = t->stoch_rs * 1664525u + 1013904223u;
+    return (t->stoch_rs >> 8) % n;
+}
+/* a pitch class (a lane) drawn by the weights, 12 for none (every weight 0 or out of the scale) */
+static uint32_t stoch_pick(track_t *t, uint32_t drum)
+{
+    const stoch_t *g = &t->stoch;
+    uint32_t mask = scale_mask(t), root = (uint32_t)t->p[P_ROOT] % 12u, k, tot = 0, r, w[12];
+    for (k = 0; k < 12u; k++) {
+        w[k] = drum ? (k < NLANE ? g->w[k] : 0u) : ((mask >> ((k + 12u - root) % 12u)) & 1u) ? g->w[k] : 0u;
+        tot += w[k];
+    }
+    if (!tot)
+        return 12;
+    r = stoch_rand(t, tot);
+    for (k = 0; k < 12u; k++) {
+        if (r < w[k])
+            return k;
+        r -= w[k];
+    }
+    return 12;
+}
+static __attribute__((noinline)) void stoch_gen(track_t *t, uint32_t idx)
+{
+    const stoch_t *g = stoch_of(t);
+    step_t *s = &t->stoch_step;
+    uint32_t drum = drum_track(t), pos = idx % 4u, p = g->dens, n, k, pc, e, v;
+    if (g->loop && idx % g->loop == 0u)
+        t->stoch_rs = ((uint32_t)g->seed << 16 | g->seed) ^ (0x9E3779B9u * (trk_index(t) + 1u));
+    memset(s, 0, sizeof *s);
+    s->time = ST_REST;
+    if (pos == 0u)
+        p += g->groove / 2u;
+    else if (pos & 1u)
+        p = p > g->groove / 2u ? p - g->groove / 2u : 0u;
+    if (stoch_rand(t, 100) >= p)
+        return;
+    for (e = 0; e < 3u; e++) {                       /* the note, then up to two more (STACK) */
+        if (e && stoch_rand(t, 100) >= g->stack)
+            break;
+        pc = stoch_pick(t, drum);
+        if (pc >= 12u)
+            break;
+        if (drum) {
+            s->hit |= (uint8_t)(1u << pc);
+        } else {
+            uint32_t note = 12u * (g->oct + 1u + stoch_rand(t, g->range)) + pc;
+            note = note > 127u ? 127u : note < 1u ? 1u : note;
+            for (k = 0; k < s->n && s->note[k] != note; k++)
+                ;
+            if (k == s->n)
+                s->note[s->n++] = (uint8_t)note;
+        }
+    }
+    if (!s->n && !s->hit)
+        return;
+    s->time = ST_NOTE;
+    v = g->vmin + stoch_rand(t, g->vmax - g->vmin + 1u);
+    s->vel = (uint8_t)v;
+    if (stoch_rand(t, 100) < g->rat)
+        step_set_ratchet(s, 2u + stoch_rand(t, 3));
+    n = stoch_rand(t, 100);
+    if (n < g->sld && !drum)
+        s->flags |= SF_SLIDE;
+}
+
 #define SEQ_REP (1u << 16)
 #define SEQ_ROLLED (1u << 17)   /* seq_tick rolled the chance already (before the step's parameter locks): it passed */
 #define SEQ_MISS (1u << 18)     /* .. it failed: nothing plays */
@@ -924,7 +1006,7 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
     uint32_t vel = (s->flags & SF_ACCENT) ? 127u : (s->vel ? s->vel : 96u);
     uint32_t slide_in = t->seq_hold && t->seq_n && !(skip & SEQ_REP);
     uint32_t len = t->p[P_SLEN] ? (uint32_t)t->p[P_SLEN] : 1u;
-    uint32_t next_tie = seq_steps(t)[(idx + 1u) % len].time == ST_TIE;
+    uint32_t next_tie = !t->stoch.on && seq_steps(t)[(idx + 1u) % len].time == ST_TIE;
     uint32_t hits = step_ratchet(s);
     uint8_t nn[4 + NLANE], vv[4 + NLANE];           /* the notes it plays: its notes, then its hits */
     uint32_t m = 0, sk = 0, pn = s->time == ST_NOTE && step_nrat_any(s) && !(skip & SEQ_REP);   /* per-note ratchet */
@@ -1073,7 +1155,7 @@ static __attribute__((noinline)) void seq_ratchet_notes(track_t *t, const step_t
 }
 static __attribute__((noinline)) void seq_ratchet(track_t *t, uint32_t period, uint32_t n)
 {
-    const step_t *s = &seq_steps(t)[t->seq_idx];
+    const step_t *s = t->stoch.on ? &t->stoch_step : &seq_steps(t)[t->seq_idx];
     uint32_t hits = step_ratchet(s);
     if (t->rn_on) {
         seq_ratchet_notes(t, s, period, n);
@@ -1112,6 +1194,10 @@ static __attribute__((noinline)) void seq_play(track_t *t, uint32_t idx, uint32_
 {
     const step_t *s = &seq_steps(t)[idx];
     const motion_store_t *m = chain_motion(t);
+    if (t->stoch.on) {                              /* STOCHASTIC: this step is drawn now (the pattern rests) */
+        stoch_gen(t, idx);
+        s = &t->stoch_step;
+    }
     uint32_t skip = SEQ_ROLLED, i, k;
     if (!step_plays(s))                             /* its fill condition fails: as a REST, no lock, no roll */
         skip = SEQ_MISS;
@@ -1200,7 +1286,7 @@ static void seq_tick(track_t *t, uint32_t n)
         t->seq_pos = t->seq_pos >= 0x7FFFFFFFu ? (chain.running ? chain.carry : 0u) : t->seq_pos - cur_len;
         t->seq_idx = (uint16_t)((t->seq_idx + 1u) % len);
         rec_hold(t, t->seq_idx, len);
-        if (t->p[P_SQNT] && !t->nd_fired)
+        if ((t->p[P_SQNT] || t->stoch.on) && !t->nd_fired)
             seq_play(t, t->seq_idx, period);        /* QUANTIZE ON: every step on its start, as before 1.2 */
         else
             seq_nd_start(t, period, len);

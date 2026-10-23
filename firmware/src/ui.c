@@ -139,6 +139,7 @@ static struct {
     uint8_t bank;                /* SEQ: 16-step bank (follows the cursor) */
     uint8_t cursor;              /* SEQ: step being edited (STEP page KNOB 1 moves it) */
     uint8_t entry_open;          /* SEQ: keys held since the first press of this entry */
+    uint8_t stoch_k;             /* the STOCH NOTES page: the pitch class (a DRUM track: the lane) KNOB 1 picked */
     uint8_t note_k;              /* the sheet: the note of the cursor's chord NOTE picked (0..n-1) */
     int8_t zoom;                 /* the roll's steps shown: NV_ZOOM[1 + zoom] (PRESETS with the sheet open), 0 = 16 as before */
     uint8_t sheet;               /* SEQ > STEP (a melodic track): the note's sheet (OCT+ held) open: 1 + its row, 0 closed */
@@ -651,6 +652,17 @@ static void note_del(track_t *t, uint32_t i, uint32_t k)   /* one note of a chor
     motion_clear_locks(t, i);
 }
 
+static uint32_t stoch_pg(void)                          /* 0..3: STOCH NOTES SHAPE STACK */
+{
+    uint32_t i, first = 0;
+    for (i = 0; i < NPAGES; i++)
+        if (PAGES[i].scope == SC_STOCH) {
+            first = i;
+            break;
+        }
+    return ui.page - first;
+}
+static uint32_t stoch_n(void) { return drum_track(TSEL) ? (uint32_t)NLANE : 12u; }   /* the weights the page shows */
 /* ------------------------------------------------------- the DRUM grid --- */
 /* SEQ > STEP on a DRUM track is the grid: 8 lanes x the 16 steps of a page. The white keys are the
  * steps of the page shown (a tap toggles the selected lane there), black keys 1..8 select the lane (and play

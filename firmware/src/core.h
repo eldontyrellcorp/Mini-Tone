@@ -380,6 +380,46 @@ static void step_set_micro(step_t *s, int32_t v)
     step_set_nudge(s, v >> 2);
     s->fx = (uint8_t)((s->fx & ~12u) | (uint32_t)(v & 3) << 2);
 }
+/* STOCHASTIC mode (after the OXI ONE's): a track with it ON generates each step as it comes (seq.c stoch_gen) from these
+ * odds, instead of playing its steps (they rest, untouched; seq.c seq_play). Saved with the project (project.c: the
+ * extension); every older project holds zeros, read as the defaults and OFF */
+typedef struct {
+    uint8_t on;                  /* 1: the track generates */
+    uint8_t dens;                /* 0..100: the chance a step plays */
+    uint8_t groove;              /* 0..100: how much likelier the downbeats are than the offbeats (+- groove / 2 points) */
+    uint8_t oct;                 /* 0..8: the lowest octave: a note is 12 (oct + 1 + 0..range - 1) + its pitch class */
+    uint8_t range;               /* 1..4: octaves */
+    uint8_t vmin, vmax;          /* 1..127: a note's velocity is drawn between them */
+    uint8_t rat;                 /* 0..100: the chance a step ratchets (x2..x4) */
+    uint8_t sld;                 /* 0..100: the chance a note slides into the next */
+    uint8_t stack;               /* 0..100: the chance of each extra note of a chord (up to two more) */
+    uint8_t loop;                /* 0: free, a new one every pass; 1..64: the same loop of that many steps, until REROLL */
+    uint8_t rsv;
+    uint16_t seed;               /* the loop's (REROLL draws another) */
+    uint8_t w[12];               /* each pitch class's weight 0..15, C to B (a DRUM track: w[0..7] are the lanes) */
+    uint8_t pad[6];              /* (32 bytes, as the extension stores it) */
+} stoch_t;
+_Static_assert(sizeof(stoch_t) == 32u, "a stochastic setting is 32 bytes (project.c extension)");
+static void stoch_defaults(stoch_t *g)
+{
+    uint32_t i;
+    memset(g, 0, sizeof *g);
+    g->dens = 60; g->groove = 40; g->oct = 3; g->range = 2; g->vmin = 70; g->vmax = 110; g->seed = 1;
+    for (i = 0; i < 12u; i++)
+        g->w[i] = 8;
+}
+/* a stored setting is zeros (no stochastic setting then) or inside its ranges: anything else is the defaults */
+static void stoch_bound(stoch_t *g)
+{
+    uint32_t i, bad = !g->vmax || !g->range || g->range > 4u || g->oct > 8u || g->vmin > g->vmax || g->vmax > 127u || !g->vmin ||
+                      g->dens > 100u || g->groove > 100u || g->rat > 100u || g->sld > 100u || g->stack > 100u || g->loop > 64u || g->on > 1u;
+    for (i = 0; i < 12u; i++)
+        bad |= g->w[i] > 15u;
+    if (bad)
+        stoch_defaults(g);
+    memset(g->pad, 0, sizeof g->pad);
+    g->rsv = 0;
+}
 #define MOTION_MAX 128u          /* 1.2 (FUN10): 64 before */
 /* Four tracks x64 steps fit one byte. Values retain their signed parameter range (-64..127: an int8_t, 1.2).
  * param: the P_* id (< 128: P_COUNT is at most 127, project.c), bit 7 (MOTION_LOCK, 1.1) a parameter lock: the value
@@ -478,7 +518,10 @@ typedef struct track {
     uint32_t rat_off[4];         /* samples to the note-off of note i's part, 0 = none */
     uint8_t rn_on;               /* the step playing ratchets per note (rat_left: its repeats are in rat_done) */
     uint8_t rn_note[4], rn_vel[4], rat_done[4];   /* the notes it plays (0: none), their velocities, the parts played */
-    uint8_t rsv_sz[12];           /* (sizeof(track_t) a multiple of 16: below) */
+    stoch_t stoch;               /* STOCHASTIC mode (above) */
+    step_t stoch_step;           /* the step it generated for the one playing (seq.c seq_play; seq_ratchet reads it again) */
+    uint32_t stoch_rs;           /* its loop's random state */
+    uint8_t rsv_sz[9];           /* (sizeof(track_t) a multiple of 16: below) */
     int16_t armp, aholdp;        /* P_AMODE / P_AHOLD as last seen by the ISR */
     /* engine switch (voice.c engine_block): the old engine's voices fade out, then it switches */
     uint8_t xf_on, xf;           /* fading; blocks of the fade still to render */

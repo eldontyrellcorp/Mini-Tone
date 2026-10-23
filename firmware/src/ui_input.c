@@ -1022,12 +1022,15 @@ static void sheet_do(void)                              /* OCT+ tapped with the 
 }
 /* OCT+ on the STEP page: a tap acts on release (the octave, as before; the sheet's action with it open), a hold (0.4 s)
  * opens the sheet. Returns pressed without OCT+ while it is down. OCT- meanwhile: both, the octave back to 0 as before */
+static int stoch_page_on(void);
+static void stoch_reroll(void);
+static void stoch_lock(void);
 static uint32_t sheet_oct(uint32_t pressed)
 {
     static uint8_t down;
     static uint32_t t0;
-    uint32_t ub = 1u << panel.btn[B_OCTUP], dn = 1u << panel.btn[B_OCTDN];
-    if (!sheet_page()) {
+    uint32_t ub = 1u << panel.btn[B_OCTUP], dn = 1u << panel.btn[B_OCTDN], st = (uint32_t)stoch_page_on();
+    if (!sheet_page() && !st) {
         down = 0;
         ui.sheet = 0;
         return pressed;
@@ -1042,7 +1045,9 @@ static uint32_t sheet_oct(uint32_t pressed)
         pressed |= ub;                                  /* (both: as before) */
     } else if (down && !(fm1_in.buttons & ub)) {
         if (down == 1u) {                               /* tapped */
-            if (ui.sheet)
+            if (st)
+                stoch_reroll();                         /* (STOCH pages: REROLL; held: LOCK) */
+            else if (ui.sheet)
                 sheet_do();
             else if (song.octave < 3)
                 song.octave++;
@@ -1050,7 +1055,9 @@ static uint32_t sheet_oct(uint32_t pressed)
         down = 0;
     } else if (down == 1u && fm1_ms - t0 >= 400u) {
         down = 2;
-        if (!ui.sheet)
+        if (st)
+            stoch_lock();
+        else if (!ui.sheet)
             ui.sheet = 1;
         ui.force = 1;
     }
@@ -1103,6 +1110,87 @@ static void start_turn(int32_t steps)
     sync_reload = 1;
     if (moved && t->p[P_SQNT])
         ui_message("QUANTIZE IS ON");
+}
+
+/* ---- STOCHASTIC (core.h stoch_t, seq.c stoch_gen): the STOCH pages' knobs, REROLL and LOCK ---- */
+static void stoch_edit(uint32_t slot, int32_t steps)
+{
+    stoch_t *g = stoch_of(TSEL);
+    uint32_t pg = stoch_pg();
+    int32_t d = accel(EN_K1 + slot, steps, 100);
+    if (pg > 3u)
+        return;
+    if (pg == 0u) {
+        if (slot == 0u)
+            g->on = steps > 0;
+        else if (slot == 1u)
+            g->dens = (uint8_t)clamp((int32_t)g->dens + d, 0, 100);
+        else if (slot == 2u)
+            g->groove = (uint8_t)clamp((int32_t)g->groove + d, 0, 100);
+        else
+            g->loop = (uint8_t)clamp((int32_t)g->loop + accel(EN_K1 + slot, steps, 64), 0, 64);
+    } else if (pg == 1u) {
+        uint32_t k = ui.stoch_k < stoch_n() ? ui.stoch_k : 0u;
+        if (slot == 0u)
+            ui.stoch_k = (uint8_t)clamp((int32_t)k + (steps > 0 ? 1 : -1), 0, (int32_t)stoch_n() - 1);
+        else if (slot == 1u)
+            g->w[k] = (uint8_t)clamp((int32_t)g->w[k] + (steps > 0 ? 1 : -1), 0, 15);
+        else if (slot == 2u)
+            g->oct = (uint8_t)clamp((int32_t)g->oct + (steps > 0 ? 1 : -1), 0, 8);
+        else
+            g->range = (uint8_t)clamp((int32_t)g->range + (steps > 0 ? 1 : -1), 1, 4);
+    } else if (pg == 2u) {
+        if (slot == 0u)
+            g->vmin = (uint8_t)clamp((int32_t)g->vmin + d, 1, g->vmax);
+        else if (slot == 1u)
+            g->vmax = (uint8_t)clamp((int32_t)g->vmax + d, g->vmin, 127);
+        else if (slot == 2u)
+            g->rat = (uint8_t)clamp((int32_t)g->rat + d, 0, 100);
+        else
+            g->sld = (uint8_t)clamp((int32_t)g->sld + d, 0, 100);
+    } else {
+        if (slot == 0u)
+            g->stack = (uint8_t)clamp((int32_t)g->stack + d, 0, 100);
+        else if (slot == 1u)
+            g->seed = (uint16_t)(g->seed + (uint32_t)(steps > 0 ? 1 : -1));
+    }
+}
+/* OCT+ tapped on a STOCH page: another SEED (the loop's; LOOP 0 draws new steps all the time anyway) */
+static void stoch_reroll(void)
+{
+    stoch_t *g = stoch_of(TSEL);
+    g->seed = (uint16_t)(rng() | 1u);
+    ui_message(g->loop ? "REROLLED" : "LOOP 0: NEW EVERY PASS");
+    ui.force = 1;
+}
+/* OCT+ held on a STOCH page: LOCK. The steps it would draw now (LEN of them, from the loop's seed when LOOP is not 0) are written
+ * into the pattern and the mode goes OFF, to be edited as any pattern (KNOB 1 START, the sheet); one undo (SAVE held) */
+static void stoch_lock(void)
+{
+    track_t *t = TSEL;
+    stoch_t *g = stoch_of(t);
+    uint32_t i, len = (uint32_t)clamp(t->p[P_SLEN], 1, NSTEP), f;
+    if (chain_busy()) {
+        ui_message("STOP TO EDIT");
+        return;
+    }
+    step_undo_take(t, 0);
+    f = motion_guard();                                 /* (the audio ISR draws from the same state) */
+    g->on = 0;
+    for (i = 0; i < len; i++) {
+        stoch_gen(t, i);
+        t->step[i] = t->stoch_step;
+    }
+    motion_unguard(f);
+    motion_undo_done(t);
+    sync_reload = 1;
+    ui_message("LOCKED");
+    ui.force = 1;
+}
+static int stoch_page_on(void)
+{
+    return !ui.home && !ui.menu && !ui.confirm && !name_on() && !act_cols() && !ui.ml.on && song.seq_mode &&
+           cur_page()->scope == SC_STOCH && !layer_held();
 }
 
 static void step_edit(uint32_t slot, int32_t steps)
@@ -1190,6 +1278,10 @@ static void edit_param(uint32_t slot, int32_t steps)
     if (chain_busy() && (pg->scope == SC_STEP || pg->graph == GR_STEPS ||
         0)) {
         ui_message("STOP TO EDIT"); return;
+    }
+    if (pg->scope == SC_STOCH) {
+        stoch_edit(slot, steps);
+        return;
     }
     if (pg->scope == SC_STEP) {
         step_edit(slot, steps);

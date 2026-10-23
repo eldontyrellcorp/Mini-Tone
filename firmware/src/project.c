@@ -129,6 +129,7 @@ typedef struct {
     motion_store_t motion;
     uint8_t fm6[NTRK][FM6_PACKED];             /* each track's FM6 patch, packed (eng_fm6.c) */
     char name[PROJ_NAME_LEN];                  /* the project's name: upper-case ASCII 32..126, 0-padded; "" = none */
+    stoch_t stoch[NTRK];                       /* each track's STOCHASTIC settings (the extension holds them) */
     uint32_t sum;
 } project_t;
 /* Historical FUN5/6 types are frozen, independent of today's P_COUNT/step_t. */
@@ -655,16 +656,32 @@ typedef struct {                               /* FUNX, as 1.5 .. 1.6 wrote it (
     uint32_t sum;
 } project_x1_t;
 _Static_assert(sizeof(project_x1_t) == 2680u, "FUNX as it was stored");
+typedef struct {                               /* FUNY, as SLOOP's steps wrote it (frozen; read only) */
+    uint32_t magic, size;
+    uint8_t parts, rsv[3];
+    uint32_t link;
+    proj_trk_t t[NPROJX];
+    uint8_t fm6[NPROJX][FM6_PACKED];
+    uint8_t cslot[CHAIN_ROWS][NPROJX];
+    uint8_t mcount, mrsv[3];
+    motion_event_t mev[MOTION_MAX];
+    uint8_t ex[NPROJ][NSTEP][3];
+    uint32_t sum;
+} project_x2_t;
+_Static_assert(sizeof(project_x2_t) == 3832u, "FUNY as it was stored");
+#define PROJX_MAGIC3 0x5A554E46u               /* "FUNZ": FUNY with the parameters a byte each (room for the stochastic settings) */
+typedef struct { uint8_t p[P_COUNT]; uint8_t engine, preset; step_t step[NSTEP]; } proj_trk8_t;   /* p + 64: -64..127 */
 typedef struct {
     uint32_t magic, size;
     uint8_t parts, rsv[3];                     /* NTRK */
     uint32_t link;                             /* the xlink of the project it belongs to: another save's extension is not its */
-    proj_trk_t t[NPROJX];
+    proj_trk8_t t[NPROJX];                     /* tracks 5 and 6 */
     uint8_t fm6[NPROJX][FM6_PACKED];
     uint8_t cslot[CHAIN_ROWS][NPROJX];         /* the sections' slots of tracks 5 and 6 (CHAIN_SILENT: "-") */
     uint8_t mcount, mrsv[3];                   /* their automation and locks: the records of motion_store_t */
     motion_event_t mev[MOTION_MAX];
     uint8_t ex[NPROJ][NSTEP][3];               /* tracks 1..4: each step's lvl, rat, fx (FUN10's 9-byte steps hold none) */
+    stoch_t stoch[NTRK];                       /* every track's STOCHASTIC settings */
     uint32_t sum;
 } project_x_t;
 _Static_assert(sizeof(project_x_t) <= 3840u, "the project extension fits a storage object");
@@ -858,17 +875,22 @@ static int proj_unpack(project_t *q, const uint8_t *b, uint32_t st)
     return 1;
 }
 
-/* the extension of q (tracks 5 and 6, their sections' slots and events, tracks 1..4's extra step bytes) -> x */
+/* the extension of q (tracks 5 and 6, their sections' slots and events, tracks 1..4's extra step bytes, the stochastic settings) -> x */
 static void projx_pack(project_x_t *x, const project_t *q)
 {
     uint32_t i, k, n = 0;
     memset(x, 0, sizeof *x);
-    x->magic = PROJX_MAGIC2;
+    x->magic = PROJX_MAGIC3;
     x->size = sizeof *x;
     x->parts = NTRK;
     x->link = q->xlink;
     for (i = 0; i < NPROJX; i++) {
-        x->t[i] = q->t[NPROJ + i];
+        const proj_trk_t *s = &q->t[NPROJ + i];
+        for (k = 0; k < P_COUNT; k++)
+            x->t[i].p[k] = (uint8_t)(clamp(s->p[k], -64, 127) + 64);
+        x->t[i].engine = s->engine;
+        x->t[i].preset = s->preset;
+        memcpy(x->t[i].step, s->step, sizeof s->step);
         memcpy(x->fm6[i], q->fm6[NPROJ + i], FM6_PACKED);
     }
     for (i = 0; i < NPROJ; i++)
@@ -877,6 +899,8 @@ static void projx_pack(project_x_t *x, const project_t *q)
             x->ex[i][k][1] = q->t[i].step[k].rat;
             x->ex[i][k][2] = q->t[i].step[k].fx;
         }
+    for (i = 0; i < NTRK; i++)
+        x->stoch[i] = q->stoch[i];
     for (i = 0; i < CHAIN_ROWS; i++)
         for (k = 0; k < NPROJX; k++)
             x->cslot[i][k] = q->chain.row[i].slot[NPROJ + k];
@@ -921,13 +945,46 @@ static void projx_slots(project_t *q, const uint8_t (*fm6)[FM6_PACKED], const ui
         q->motion.event[n++] = mev[i];
     q->motion.count = (uint8_t)n;
 }
-/* x -> tracks 5 and 6 of q (after q was imported: proj_x_defaults) and the extra bytes of the steps of tracks 1..4;
- * 0 = not an extension of this firmware (q untouched) */
+/* x -> tracks 5 and 6 of q (after q was imported: proj_x_defaults), the extra bytes of the steps of tracks 1..4 and the
+ * stochastic settings; 0 = not an extension of this firmware (q untouched) */
 static int projx_merge(project_t *q, const project_x_t *x)
 {
     uint32_t i, k;
     uint8_t eng[NPROJX];
-    if (x->magic != PROJX_MAGIC2 || x->size != sizeof *x || x->sum != projx_sum(x))
+    if (x->magic != PROJX_MAGIC3 || x->size != sizeof *x || x->sum != projx_sum(x))
+        return 0;
+    for (i = 0; i < NPROJX; i++)
+        eng[i] = x->t[i].engine;
+    if (!projx_fits(q, x->link, x->parts, eng, x->mcount, x->mev))
+        return 0;
+    for (i = 0; i < NPROJX; i++) {
+        proj_trk_t *d = &q->t[NPROJ + i];
+        for (k = 0; k < P_COUNT; k++)
+            d->p[k] = (int16_t)((int32_t)x->t[i].p[k] - 64);
+        d->engine = x->t[i].engine;
+        d->preset = x->t[i].preset;
+        memcpy(d->step, x->t[i].step, sizeof d->step);
+    }
+    for (i = 0; i < NPROJ; i++)
+        for (k = 0; k < NSTEP; k++) {
+            q->t[i].step[k].lvl = x->ex[i][k][0];
+            q->t[i].step[k].rat = x->ex[i][k][1];
+            q->t[i].step[k].fx = x->ex[i][k][2] & 15u;
+        }
+    for (i = 0; i < NTRK; i++) {
+        q->stoch[i] = x->stoch[i];
+        stoch_bound(&q->stoch[i]);
+    }
+    projx_slots(q, x->fm6, x->cslot, x->mcount, x->mev);
+    q->sum = proj_sum(q);
+    return 1;
+}
+/* FUNY (SLOOP's steps, before the stochastic settings): the settings stay as proj_import left them (none) */
+static int projx2_merge(project_t *q, const project_x2_t *x)
+{
+    uint32_t i, k;
+    uint8_t eng[NPROJX];
+    if (x->magic != PROJX_MAGIC2 || x->size != sizeof *x || x->sum != proj_hash(x, sizeof *x - 4u))
         return 0;
     for (i = 0; i < NPROJX; i++)
         eng[i] = x->t[i].engine;
@@ -1009,6 +1066,7 @@ static union {                               /* serialized main-loop work; no re
 #define proj_wire (proj_wire_u.s)
 static uint8_t proj_wire_gen;                /* +1 whenever proj_wire is rewritten (a backup's runtime copy lives there) */
 static project_x_t projx_buf __attribute__((section(".pool")));   /* an extension in work (tracks 5 and 6), main loop only */
+static union { project_x_t z; project_x2_t y; project_x1_t x; } projx_rd __attribute__((section(".pool")));   /* one read, of any layout */
 #if FELUCCA_FLASH
 /* the extension of slot / the autosave (storage object obj) -> tracks 5 and 6 of q; no valid one (a project of the old
  * firmware, a slot never saved here): q keeps them as proj_x_defaults made them */
@@ -1017,11 +1075,13 @@ static void proj_x_load(project_t *q, uint32_t obj)
     int n;
     if (!flash_ok)
         return;
-    n = st_load(obj, &projx_buf, sizeof projx_buf);
-    if (n == (int)sizeof projx_buf)
-        (void)projx_merge(q, &projx_buf);
+    n = st_load(obj, &projx_rd, sizeof projx_rd);
+    if (n == (int)sizeof(project_x_t))
+        (void)projx_merge(q, &projx_rd.z);
+    else if (n == (int)sizeof(project_x2_t))            /* (saved before the stochastic settings: read as it was) */
+        (void)projx2_merge(q, &projx_rd.y);
     else if (n == (int)sizeof(project_x1_t))            /* (saved before SLOOP's steps: read as it was) */
-        (void)projx1_merge(q, (const project_x1_t *)&projx_buf);
+        (void)projx1_merge(q, &projx_rd.x);
 }
 static int proj_x_save(const project_t *q, uint32_t obj)    /* 0 saved */
 {
@@ -1059,6 +1119,7 @@ static void proj_bound(project_t *q)
 {
     uint32_t t, i;
     for (t = 0; t < NTRK; t++) {
+        stoch_bound(&q->stoch[t]);
         proj_steps(q->t[t].step);
         for (i = 0; i < NSTEP; i++) {
             step_t *s = &q->t[t].step[i];
@@ -1116,6 +1177,7 @@ static void project_capture(project_t *p)
         p->t[i].engine = trk[i].eng_req;
         p->t[i].preset = trk[i].preset;
         memcpy(p->t[i].step, trk[i].step, sizeof trk[i].step);
+        p->stoch[i] = trk[i].stoch;
         fm6_pack(fm6_patch[i], p->fm6[i]);
     }
     p->motion = motion;
@@ -1293,6 +1355,8 @@ static int project_restore_runtime(const project_t *input)
         t->preset = (uint8_t)(ENGINES[e]->npresets ? (s->preset >= PROJ_DEF_KEEP ? 0u : s->preset) % ENGINES[e]->npresets : 0u);
         memcpy(t->step, s->step, sizeof t->step);
         proj_steps(t->step);
+        t->stoch = p->stoch[k];                         /* (zeros: the defaults, OFF) */
+        stoch_bound(&t->stoch);
         {   /* the project's own FM6 patch, never reloaded from SLOT: F n if it is that factory patch, else OWN */
             uint8_t v[FP_SIZE + 1u];
             fm6_unpack(p->fm6[k], v);

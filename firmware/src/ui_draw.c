@@ -1109,6 +1109,47 @@ static void draw_columns(void)
         }
         return;
     }
+    if (cur_page()->scope == SC_STOCH) {                      /* STOCHASTIC (ui_input.c stoch_edit): four pages of four */
+        const stoch_t *g = stoch_of(TSEL);
+        uint32_t pg = stoch_pg(), k = ui.stoch_k < stoch_n() ? ui.stoch_k : 0u, drum = drum_track(TSEL), in;
+        char a[4][12], u[4][8];
+        const char *lab[4] = {"", "", "", ""};
+        int32_t ra[4] = {-1, -1, -1, -1};
+        uint32_t c2;
+        for (c2 = 0; c2 < 4u; c2++)
+            a[c2][0] = u[c2][0] = 0;
+        if (pg == 0u) {
+            lab[0] = "MODE"; lab[1] = "DENS"; lab[2] = "GROOVE"; lab[3] = "LOOP";
+            str_cpy(a[0], g->on ? "ON" : "OFF", 12);
+            fmt_int(a[1], g->dens); str_cpy(u[1], "%", 8); ra[1] = g->dens * 10;
+            fmt_int(a[2], g->groove); str_cpy(u[2], "%", 8); ra[2] = g->groove * 10;
+            if (g->loop) { fmt_int(a[3], g->loop); str_cpy(u[3], "STEPS", 8); }
+            else str_cpy(a[3], "FREE", 12);
+            ra[3] = g->loop * 1000 / 64;
+        } else if (pg == 1u) {
+            lab[0] = drum ? "LANE" : "NOTE"; lab[1] = "WEIGHT"; lab[2] = "OCT"; lab[3] = "RANGE";
+            in = drum || ((scale_mask(TSEL) >> ((k + 12u - (uint32_t)TSEL->p[P_ROOT] % 12u) % 12u)) & 1u);
+            if (drum) str_cpy(a[0], drum_lane_abbr(TSEL, k), 12);
+            else str_cpy(a[0], N_NOTE[k], 12);
+            if (!in) str_cpy(u[0], "OUT", 8);
+            fmt_int(a[1], g->w[k]); ra[1] = g->w[k] * 1000 / 15;
+            fmt_int(a[2], g->oct); ra[2] = g->oct * 1000 / 8;
+            fmt_int(a[3], g->range); str_cpy(u[3], "OCT", 8); ra[3] = (g->range - 1) * 1000 / 3;
+        } else if (pg == 2u) {
+            lab[0] = "VEL MIN"; lab[1] = "VEL MAX"; lab[2] = "RAT"; lab[3] = "SLIDE";
+            fmt_int(a[0], g->vmin); ra[0] = g->vmin * 1000 / 127;
+            fmt_int(a[1], g->vmax); ra[1] = g->vmax * 1000 / 127;
+            fmt_int(a[2], g->rat); str_cpy(u[2], "%", 8); ra[2] = g->rat * 10;
+            fmt_int(a[3], g->sld); str_cpy(u[3], "%", 8); ra[3] = g->sld * 10;
+        } else {
+            lab[0] = "STACK"; lab[1] = "SEED";
+            fmt_int(a[0], g->stack); str_cpy(u[0], "%", 8); ra[0] = g->stack * 10;
+            fmt_int(a[1], g->seed);
+        }
+        for (c2 = 0; c2 < 4u; c2++)
+            draw_column(c2, lab[c2], a[c2], u[c2], lab[c2][0] ? VAL(c2) : T_DIM, ra[c2], ICON_AUTO);
+        return;
+    }
     if (cur_page()->scope == SC_STEP && drum_track(TSEL)) {   /* the grid: STEP LANE HIT ACC */
         const step_t *st = &seq_steps(TSEL)[ui.cursor];
         uint32_t b = 1u << ui.lane, on = (step_lanes(st) & b) != 0u, ac = (step_accents(st) & b) != 0u;

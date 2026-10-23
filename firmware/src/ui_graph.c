@@ -209,6 +209,8 @@ static void graph_roll(const track_t *t, uint16_t c)
     uint64_t locks = motion_lock_steps(trk_index(t));
     int32_t r, ybot = PR_Y0 + PR_ROWS * PR_RH, gw, cw = 192 / (int32_t)nv;
     char nb[8];
+    if (t->stoch.on)                                /* STOCHASTIC: the track draws its steps, these rest */
+        cv_text_on(2, 0, &AF_S, "STOCH", T_ACCENT, T_SURF);
     ncol = base < len ? (len - base < nv ? len - base : nv) : 0u;
     gw = (int32_t)ncol * cw + 1;
     for (r = 0; r < PR_ROWS; r++) {                 /* rows: the lane, the key, the C names */
@@ -263,6 +265,46 @@ static void graph_roll(const track_t *t, uint16_t c)
             int32_t ny = clamp(pr_row_y(ns->note[0]), PR_Y0, ybot - PR_RH);
             cv_line(x + cw - 2, y + 2, x + cw + 2, ny + 2, T_TEXT);   /* the slide into the next note */
         }
+    }
+}
+/* STOCH pages (ui_input.c stoch_edit): the weights of the pitch classes C..B (a DRUM track: its 8 lanes) as bars, the
+ * picked one (NOTES: KNOB 1) outlined in the ACCENT, the bars out of the track's scale DIM (their weight is not heard), under
+ * each its name; while the track generates and plays, a dot over the bar of each note the step playing drew; top left
+ * what it does (OFF, LIVE, LOOP n) */
+static void graph_stoch(const track_t *t, uint16_t c)
+{
+    const stoch_t *g = &t->stoch;
+    uint32_t n = drum_track(t) ? (uint32_t)NLANE : 12u, k, mask = scale_mask(t), root = (uint32_t)t->p[P_ROOT] % 12u;
+    uint32_t pick = ui.stoch_k < n ? ui.stoch_k : 0u, drum = n == NLANE, lit = 0;
+    int32_t pitch = 212 / (int32_t)n, bw = pitch - 3, x0 = 14, base = 98, hmax = 72;
+    char b[16];
+    const stoch_t def = {0};
+    (void)def;
+    if (song.playing && t->stoch.on) {                 /* the notes the step playing drew */
+        const step_t *st = &t->stoch_step;
+        for (k = 0; k < st->n && k < 4u; k++)
+            lit |= 1u << (st->note[k] % 12u);
+        if (drum)
+            lit = st->hit;
+    }
+    if (!g->on)
+        str_cpy(b, "OFF", 16);
+    else if (g->loop) {
+        str_cpy(b, "LOOP ", 16);
+        fmt_int(b + 5, g->loop);
+    } else
+        str_cpy(b, "LIVE", 16);
+    cv_text_on(6, 0, &AF_S, b, g->on ? T_ACCENT : T_DIM, T_SURF);
+    for (k = 0; k < n; k++) {
+        int32_t x = x0 + (int32_t)k * pitch, h = 2 + (int32_t)g->w[k] * hmax / 15;
+        int in = drum || ((mask >> ((k + 12u - root) % 12u)) & 1u);
+        uint16_t col = !g->on ? T_RAISE : in ? c : T_DIM;
+        cv_rect(x, base - h, bw, h, in ? col : T_RAISE);
+        if (k == pick)
+            cv_frame(x - 1, base - hmax - 4, bw + 2, hmax + 6, T_ACCENT);
+        if ((lit >> k) & 1u)
+            cv_rect(x + bw / 2 - 1, base - hmax - 9, 3, 3, T_TEXT);
+        cv_text_in(x - 1, base + 4, bw + 2, &AF_S, drum ? drum_lane_abbr(t, k) : N_NOTE[k], in ? T_MID : T_DIM, T_SURF);
     }
 }
 /* the note's sheet over the roll (ui.sheet, ui_input.c sheet_knob): the rows of ui.c SHEET_N, six showing and scrolling
@@ -1241,6 +1283,11 @@ static uint32_t graph_signature(void)
             h ^= (ui_prefs & PREF_LARGE) ? 0x2545F491u : 0u;
         }
     }
+    if (pg->graph == GR_STOCH) {                     /* its settings, the pick, the step drawn now */
+        h = fnv(h, &t->stoch, sizeof t->stoch);
+        h = fnv(h, &t->stoch_step, sizeof t->stoch_step);
+        h ^= (ui.stoch_k + 1u) * 40009u + song.playing * 7u;
+    }
     if (pg->graph == GR_REVX)                        /* the ELEK reverb's values */
         for (i = 0; i < RV_N; i++)
             h = (h ^ (uint32_t)rvx_p[i]) * 16777619u;
@@ -1270,6 +1317,7 @@ static uint32_t graph_signature(void)
         uint32_t ph = song.playing ? t->seq_idx : 0xFFFFu;
         if (ph < pr_base() || ph >= pr_base() + pr_nv())
             ph = 0xFFFFu;                            /* the roll shows the cursor's bank only */
+        h ^= t->stoch.on * 4001u;
         h ^= ui.sheet * 977u + ui.note_k * 40009u + (uint32_t)(ui.zoom + 4) * 1301u;
         h ^= steps_hash(t) + ph * 31u + ui.cursor * 7919u + ui.lane * 104723u + ui.bank * 613u +
              drum_mute[trk_index(t) % NPART] * 2654435761u;
@@ -2310,6 +2358,10 @@ static void draw_graph(void)
                 graph_roll(t, c);
             if (ui.sheet)
                 graph_sheet(t);
+            break;
+        case GR_STOCH:
+            cv_oy = 0;
+            graph_stoch(t, c);
             break;
         case GR_SCALE:
             graph_scale(t, c);

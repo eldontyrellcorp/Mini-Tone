@@ -164,7 +164,7 @@ static int pack_merge(void)
     bad += check("FUN10 alone: tracks 1..4 and their events as ever; tracks 5 and 6 come back as at power-on",
                  ok && same_track(&a, &b, 0) && same_track(&a, &b, 3) && defaults_5_6(&b) && motion_of(&b, 0, NPROJ, 0) == 2u);
     projx_pack(&x, &a);
-    ok = x.magic == PROJX_MAGIC2 && x.size == sizeof x && x.parts == NTRK && x.mcount == 4u && x.sum == projx_sum(&x);
+    ok = x.magic == PROJX_MAGIC3 && x.size == sizeof x && x.parts == NTRK && x.mcount == 4u && x.sum == projx_sum(&x);
     bad += check("projx_pack: tracks 5 and 6, their 4 events (and no event of tracks 1..4), the checksum", ok);
     ok = projx_merge(&b, &x);
     for (i = 0; i < NTRK; i++)
@@ -401,7 +401,8 @@ static int step_extras(void)
     memset(&o, 0, sizeof o);
     o.magic = PROJX_MAGIC; o.size = sizeof o; o.parts = x.parts; o.link = x.link;
     for (i = 0; i < NPROJX; i++) {
-        memcpy(o.t[i].p, x.t[i].p, sizeof o.t[i].p);
+        for (k = 0; k < P_COUNT; k++)
+            o.t[i].p[k] = (int16_t)((int)x.t[i].p[k] - 64);
         o.t[i].engine = x.t[i].engine; o.t[i].preset = x.t[i].preset;
         for (k = 0; k < NSTEP; k++)
             memcpy(&o.t[i].step[k], &x.t[i].step[k], sizeof(step11_t));
@@ -421,9 +422,60 @@ static int step_extras(void)
     return bad;
 }
 
+/* the stochastic settings: every track's, with the project (the extension FUNZ); a FUNY (before them) loads as before */
+static int stoch_save(void)
+{
+    int bad = 0, ok;
+    static project_x_t x;
+    static project_x2_t y;
+    uint32_t i, k;
+    make_music();
+    for (i = 0; i < NTRK; i++) {
+        stoch_defaults(&trk[i].stoch);
+        trk[i].stoch.dens = (uint8_t)(10 + i); trk[i].stoch.seed = (uint16_t)(1000 + i); trk[i].stoch.w[i] = 15;
+    }
+    trk[0].stoch.on = 1; trk[0].stoch.loop = 12;
+    trk[5].stoch.on = 1; trk[5].stoch.range = 4; trk[5].stoch.vmax = 127;
+    ok = project_save(2) == 0;
+    ok &= st_load(OBJ_PROJX0 + 2, &projx_buf, sizeof projx_buf) == (int)sizeof projx_buf;
+    power_cycle();
+    memset(proj_slot, 0, sizeof proj_slot);
+    for (i = 0; i < NTRK; i++)
+        memset(&trk[i].stoch, 0, sizeof trk[i].stoch);
+    project_load(2);
+    for (i = 0; i < NTRK; i++)
+        ok &= trk[i].stoch.dens == 10 + i && trk[i].stoch.seed == 1000 + i && trk[i].stoch.w[i] == 15 &&
+              trk[i].stoch.w[(i + 1u) % 12u] == 8 && trk[i].stoch.on == (i == 0u || i == 5u);
+    ok &= trk[0].stoch.loop == 12 && trk[5].stoch.range == 4 && trk[5].stoch.vmax == 127 && trk[2].stoch.vmax == 110;
+    bad += check("STOCH: every track's settings (on, odds, weights, loop, seed) saved and loaded with the project", ok);
+    /* a FUNY in the extension's place: the sounds and steps as before, no settings (the defaults, OFF) */
+    ok = st_load(OBJ_PROJX0 + 2, &projx_buf, sizeof projx_buf) == (int)sizeof projx_buf;
+    x = projx_buf;
+    memset(&y, 0, sizeof y);
+    y.magic = PROJX_MAGIC2; y.size = sizeof y; y.parts = x.parts; y.link = x.link;
+    for (i = 0; i < NPROJX; i++) {
+        for (k = 0; k < P_COUNT; k++)
+            y.t[i].p[k] = (int16_t)((int)x.t[i].p[k] - 64);
+        y.t[i].engine = x.t[i].engine; y.t[i].preset = x.t[i].preset;
+        memcpy(y.t[i].step, x.t[i].step, sizeof y.t[i].step);
+    }
+    memcpy(y.fm6, x.fm6, sizeof y.fm6); memcpy(y.cslot, x.cslot, sizeof y.cslot);
+    y.mcount = x.mcount; memcpy(y.mev, x.mev, sizeof y.mev); memcpy(y.ex, x.ex, sizeof y.ex);
+    y.sum = proj_hash(&y, sizeof y - 4u);
+    ok &= st_save(OBJ_PROJX0 + 2, &y, sizeof y) == 0;
+    power_cycle();
+    memset(proj_slot, 0, sizeof proj_slot);
+    project_load(2);
+    ok &= trk[4].eng_req == 18u && trk[4].p[P_E5] == 33 && trk[5].p[P_SLEN] == 64 && motion.count == 6u;
+    for (i = 0; i < NTRK; i++)
+        ok &= !trk[i].stoch.on && trk[i].stoch.dens == 60 && trk[i].stoch.vmax == 110;
+    bad += check("  a FUNY extension (before the settings): tracks 5 and 6 as they were, every track's settings the defaults, OFF", ok);
+    return bad;
+}
+
 int main(void)
 {
-    int bad = step_extras() + pack_merge() + flash_roundtrip() + old_era() + damaged() + stale_extension() + autosave();
+    int bad = stoch_save() + step_extras() + pack_merge() + flash_roundtrip() + old_era() + damaged() + stale_extension() + autosave();
     printf("%s\n", bad ? "SIX-TRACK PROJECT TEST FAILED" : "six-track project test passed");
     return bad != 0;
 }
