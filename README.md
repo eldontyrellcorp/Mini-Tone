@@ -24,7 +24,10 @@ What changed since 1.0.0 (the version shows in ABOUT, the console and the editor
   - the **playing section's letter** (A..D) on each row of HOME > TRACKS while a song plays
   - the extra step data is saved with the project (in its extension; projects of 1.0.0 load as they were), not with user presets
     or in the web editor
-- New host tests: `rsvf_test`, `poly_test`, `sheet_test`, `sloop_seq_test`; the full list is in `tests/run_tests.sh`
+- **STOCHASTIC mode** (after the OXI ONE's): a track generates its steps as they come, from odds you set, instead of playing its pattern
+  (SEQ > STOCH, NOTES, SHAPE, STACK; see Controls). The pattern rests untouched, and LOCK writes what it draws into the pattern
+- **KNOB 1 on SEQ > STEP is the note's START**, a 64th of a step a detent and on into the next step (see Controls)
+- New host tests: `rsvf_test`, `poly_test`, `sheet_test`, `sloop_seq_test`, `stoch_test`; the full list is in `tests/run_tests.sh`
 
 ## Mini-Tone 1.0.0
 
@@ -141,6 +144,19 @@ it changes:
   NUDGE, which plays with the track's QUANTIZE off) and, past the end of its step, on into the next one (its TIEs, chance, force,
   condition and locks with it) and so on, 64 detents a step, onto free steps only. The cursor moves with the PRESETS knob (and the
   grid's keys); on a step with no note KNOB 1 does nothing. KNOB 2 NOTE, KNOB 3 LEN, KNOB 4 FLAG as before. The drum grid keeps KNOB 1 as its cursor
+- **STOCHASTIC mode:** tap SEQ to go on from AUTOMATION to the four STOCH pages (STOCH, NOTES, SHAPE, STACK), for the selected track.
+  With MODE ON the track draws each step as it plays, from these settings; its pattern is not played and not changed. MODE OFF plays the pattern as before.
+  - **STOCH:** MODE (KNOB 1, OFF / ON), DENS (the chance a step plays, 0..100 %), GROOVE (how much likelier the downbeats are than the
+    offbeats), LOOP (FREE: a new draw every pass; 1..64: the same loop of that many steps every pass, for the same SEED)
+  - **NOTES:** KNOB 1 picks a pitch class C..B (a DRUM track: a lane), KNOB 2 its WEIGHT 0..15 (0 never plays; a note outside the
+    track's scale is marked OUT and is not heard), OCT (the lowest octave) and RANGE (1..4 octaves). The bars show the weights
+    and a dot marks the notes of the step playing
+  - **SHAPE:** VEL MIN and VEL MAX (each velocity is drawn between them), RAT (the chance of a ratchet x2..x4), SLIDE (the chance a note
+    slides into the next)
+  - **STACK:** the chance of each extra note of a chord (up to two more), and the SEED of the loop
+  - On a STOCH page **OCT+ tapped is REROLL** (another SEED; with LOOP FREE every pass is new anyway) and **OCT+ held (0.4 s) is LOCK**: the
+    LEN steps it would draw are written into the pattern, MODE goes OFF, and you edit them as any pattern (one undo, SAVE held)
+  - Settings are saved with the project (in its extension; projects saved before load with the mode OFF), not in user presets
 - On SEQ > STEP, hold a step and turn KNOB 1–4 to lock those parameters on that step (PRESETS: its NUDGE)
 - On SEQ > STEP, hold OCT+ for 0.4 s for the **sheet**, after [SLOOP](https://github.com/isod89/sloop-fm1) 2.8's NOTES page and its
   sheet. KNOB 1 picks a row (six show, they scroll), KNOB 2 sets it, PRESETS zooms the roll (8, 16, 32 or 64 steps), OCT+ tapped
