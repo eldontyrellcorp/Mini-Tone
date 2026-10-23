@@ -1683,6 +1683,31 @@ static void ui_notices(void)
     }
 }
 
+/* MENU > CONTROL > SELECT PAGES: a SELECT detent is the next / previous page of the family shown (a wrap, the pages this
+ * track shows, as the family's button taps step them); from HOME the first detent opens the EDIT page last shown. Nothing
+ * while a menu, a dialog, a name or a list of actions is open */
+static void select_pages(int32_t dir)
+{
+    uint32_t fam, i, n;
+    if (ui.menu || ui.confirm || name_on() || act_cols() || ui.ml.on)
+        return;
+    if (ui.home) {
+        i = ui.fam_last[FAM_EDIT];
+        ui.page = (uint8_t)(i && i < NPAGES && PAGES[i].fam == FAM_EDIT && page_visible(i) ? i : page_first(FAM_EDIT));
+    } else {
+        fam = PAGES[ui.page].fam;
+        for (i = ui.page, n = 0; n < NPAGES; n++) {
+            i = dir > 0 ? (i + 1u) % NPAGES : (i + NPAGES - 1u) % NPAGES;
+            if (PAGES[i].fam == fam && page_visible(i))
+                break;
+        }
+        ui.page = (uint8_t)i;
+    }
+    ui.home = 0;
+    ui.fam_last[PAGES[ui.page].fam] = ui.page;
+    page_entered();
+}
+
 static void ui_input(void)
 {
     uint32_t pressed = fm1_input_edges(0), notes = fm1_input_note_edges(), now = fm1_ticks(), id, b, k;
@@ -1964,7 +1989,10 @@ static void ui_input(void)
         presets_turn(s);
     if (!lay && (s = panel_enc(EN_ALGO)) != 0)     /* ALGORITHM: the selected track, on every page */
         track_select((uint32_t)clamp((int32_t)song.sel + (s > 0 ? 1 : -1), 0, NTRK - 1));
-    if ((s = glo ? sel : panel_enc(EN_SELECT)) != 0) {   /* SELECT knob = global tempo; */
+    if (!glo && (ui_prefs2 & (PREF_SEL_PAGES >> 16))) {   /* MENU > SELECT PAGES: the knob steps the pages (GLO + SELECT: the tempo) */
+        if ((s = panel_enc(EN_SELECT)) != 0 && !lay)
+            select_pages(s);
+    } else if ((s = glo ? sel : panel_enc(EN_SELECT)) != 0) {   /* SELECT knob = global tempo; */
         if (glo || !(ui_prefs & PREF_BPM_LOCK)) {
             song.g[G_BPM] = (int16_t)clamp(song.g[G_BPM] + accel(EN_SELECT, s, 200), GP[G_BPM].min, GP[G_BPM].max);
             ui.bpm_t = 40;                              /* the header's BPM lights up; no message over the header */

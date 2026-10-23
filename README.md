@@ -5,15 +5,8 @@
 
 ## Mini-Tone 1.0.2
 
-What changed since 1.0.0 (the version shows in ABOUT, the console and the editor):
+What changed since 1.0.1:
 
-- **A new SID engine**: a port of reSID 0.16 (bit-exact waveform generator, the 6581 / 8580 filters, the combined waveforms of the real chips),
-  with a MODEL switch and 26 presets that show what it can do (Engines, below)
-- **A shared resonant filter** in the Elektron engines (SWARM, FMTONE, WAVETONE, CHIP, DUALVCO, ANALOG4): CUT, RES and KEY, TYPE LP / BP / HP, up
-  to self-oscillation that follows the keys, on a FILTER page of its own (SWARM, FMTONE, WAVETONE, CHIP, DUALVCO) or in ANALOG4's two filters; 10 new presets.
-  A fix with it: an engine that fades out on a switch now keeps its own operator values, so the switch no longer clicks
-- **Delay TIME in dotted notes and milliseconds**, and **LEN any length from 1 to 64** (7 against 16 is a polyrhythm)
-- **FMTONE's algorithm diagram** on its EDIT pages, as FM6 has
 - **Sloop 2.8's sequencer features**, ported onto Mini-Tone's own steps (credits at the end):
   - a **sheet** on SEQ > STEP and on the drum grid: hold OCT+ for NOTE, PITCH, LEN, FORCE, RATCH, SLIDE, NUDGE, FILL, MOVE, COPY and DELETE
     (the drum grid's: ACC, RATCH, NUDGE, FILL, MOVE, COPY, DELETE); PRESETS zooms the roll to 8, 16, 32 or 64 steps
@@ -27,7 +20,18 @@ What changed since 1.0.0 (the version shows in ABOUT, the console and the editor
 - **STOCHASTIC mode** (after the OXI ONE's): a track generates its steps as they come, from odds you set, instead of playing its pattern
   (SEQ > STOCH, NOTES, SHAPE, STACK; see Controls). The pattern rests untouched, and LOCK writes what it draws into the pattern
 - **KNOB 1 on SEQ > STEP is the note's START**, a 64th of a step a detent and on into the next step (see Controls)
-- New host tests: `rsvf_test`, `poly_test`, `sheet_test`, `sloop_seq_test`, `stoch_test`; the full list is in `tests/run_tests.sh`
+
+## Mini-Tone 1.0.1
+
+What changed since 1.0.0:
+
+- **A new SID engine**: a port of reSID 0.16 (bit-exact waveform generator, the 6581 / 8580 filters, the combined waveforms of the real chips),
+  with a MODEL switch and 26 presets that show what it can do (Engines, below)
+- **A shared resonant filter** in the Elektron engines (SWARM, FMTONE, WAVETONE, CHIP, DUALVCO, ANALOG4): CUT, RES and KEY, TYPE LP / BP / HP, up
+  to self-oscillation that follows the keys, on a FILTER page of its own (SWARM, FMTONE, WAVETONE, CHIP, DUALVCO) or in ANALOG4's two filters; 10 new presets.
+  A fix with it: an engine that fades out on a switch now keeps its own operator values, so the switch no longer clicks
+- **Delay TIME in dotted notes and milliseconds**, and **LEN any length from 1 to 64** (7 against 16 is a polyrhythm)
+- **FMTONE's algorithm diagram** on its EDIT pages, as FM6 has
 
 ## Mini-Tone 1.0.0
 
@@ -157,6 +161,7 @@ it changes:
   - On a STOCH page **OCT+ tapped is REROLL** (another SEED; with LOOP FREE every pass is new anyway) and **OCT+ held (0.4 s) is LOCK**: the
     LEN steps it would draw are written into the pattern, MODE goes OFF, and you edit them as any pattern (one undo, SAVE held)
   - Settings are saved with the project (in its extension; projects saved before load with the mode OFF), not in user presets
+- **MENU > CONTROL > SELECT:** what the SELECT knob does. TEMPO (the default): the tempo, as before. PAGES: a detent steps to the next or previous page of the family shown (a wrap; from HOME, the EDIT pages), and the tempo is set with GLO held + SELECT, GLO's F4 TAP or HOME > CLOCK
 - On SEQ > STEP, hold a step and turn KNOB 1–4 to lock those parameters on that step (PRESETS: its NUDGE)
 - On SEQ > STEP, hold OCT+ for 0.4 s for the **sheet**, after [SLOOP](https://github.com/isod89/sloop-fm1) 2.8's NOTES page and its
   sheet. KNOB 1 picks a row (six show, they scroll), KNOB 2 sets it, PRESETS zooms the roll (8, 16, 32 or 64 steps), OCT+ tapped

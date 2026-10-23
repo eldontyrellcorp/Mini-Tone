@@ -1594,7 +1594,7 @@ static int test_menu_tabs(void)
     bad += check("MENU tabs: DISPLAY CONTROL AUDIO MIDI SYSTEM (8 7 8 2 6 rows), 1..8 each in a run, fit the page; tab gaps "
                  "constant (S, LARGE)",
                  ok && MTAB_COUNT == 5u && str_eq(MTAB_NAME[0], "DISPLAY") && str_eq(MTAB_NAME[MTAB_MIDI], "MIDI") &&
-                 mtab_rows(MTAB_DISPLAY) == 8u && MI_TAB[MI_HOME] == MTAB_DISPLAY && mtab_rows(MTAB_CONTROL) == 7u && mtab_rows(MTAB_AUDIO) == 8u && MI_TAB[MI_PINGPONG] == MTAB_AUDIO && MI_TAB[MI_DLYHALF] == MTAB_AUDIO &&
+                 mtab_rows(MTAB_DISPLAY) == 8u && MI_TAB[MI_HOME] == MTAB_DISPLAY && mtab_rows(MTAB_CONTROL) == 8u && mtab_rows(MTAB_AUDIO) == 8u && MI_TAB[MI_PINGPONG] == MTAB_AUDIO && MI_TAB[MI_DLYHALF] == MTAB_AUDIO &&
                  mtab_rows(MTAB_MIDI) == 2u && MI_TAB[MI_LCLEAR] == MTAB_MIDI && mtab_rows(MTAB_SYSTEM) == 6u && MI_TAB[MI_TUNE] == MTAB_AUDIO &&   /* (1.5: LEARN CLEAR, HELP) */
                  MI_TAB[MI_MIDIIN] == MTAB_MIDI && MI_TAB[MI_INFO] == MTAB_SYSTEM && MI_INFO >= MI_VALUES);
 
@@ -7722,6 +7722,39 @@ static int test_usb_serial(void)
     return bad;
 }
 
+/* MENU > CONTROL > SELECT: TEMPO (the default) or PAGES: the knob steps the pages of the family shown (a wrap), from HOME the
+ * EDIT pages; GLO + SELECT is the tempo still; the menu takes no page step */
+static int test_select_pages(void)
+{
+    int bad = 0, ok;
+    int16_t b0;
+    uint32_t p0;
+    ui_power_on();
+    ui_prefs2 = 0;
+    ok = str_eq(menu_flag(MI_SELECT)->name[0], "TEMPO") && str_eq(menu_flag(MI_SELECT)->name[1], "PAGES") &&
+         MI_TAB[MI_SELECT] == MTAB_CONTROL;
+    ui_prefs2 = (uint8_t)(PREF_SEL_PAGES >> 16);
+    go_title("EDIT 1"); frame();
+    b0 = song.g[G_BPM];
+    p0 = ui.page;
+    turn(EN_SELECT, 1);
+    ok &= song.g[G_BPM] == b0 && ui.page != p0 && cur_page()->fam == FAM_EDIT && page_visible(ui.page);
+    turn(EN_SELECT, -1);
+    ok &= ui.page == p0 && song.g[G_BPM] == b0;
+    turn(EN_SELECT, -1);                                /* (the wrap: the family's last page) */
+    ok &= cur_page()->fam == FAM_EDIT && ui.page != p0;
+    go_home(); frame();
+    turn(EN_SELECT, 1);
+    ok &= !ui.home && cur_page()->fam == FAM_EDIT && song.g[G_BPM] == b0;
+    ui_prefs2 = 0;
+    go_title("ENV"); frame();
+    p0 = ui.page;
+    turn(EN_SELECT, 1);
+    ok &= ui.page == p0 && song.g[G_BPM] == b0 + 1;     /* (TEMPO: as before) */
+    bad += check("MENU > SELECT PAGES: SELECT steps the family's pages (HOME: the EDIT pages), no tempo; TEMPO: as before", ok);
+    return bad;
+}
+
 /* #58 MENU > BPM LOCK: OFF by default (and in every older setting): SELECT sets the tempo on every page. ON: SELECT
  * leaves it on the pages ("BPM LOCKED" once per turn burst); HOME > CLOCK's BPM knob, GLO + SELECT (a combo: the map
  * opens, no GLO page; OCT- puts it back) and GLO's F4 TAP still set it; the menu never takes SELECT as the tempo */
@@ -9444,6 +9477,7 @@ int main(void)
     bad += test_click_menu();
     bad += test_usb_serial();
     bad += test_bpm_lock();
+    bad += test_select_pages();
     bad += test_large();
     bad += test_browse_no_pattern();
     bad += test_name();

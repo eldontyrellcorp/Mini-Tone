@@ -73,6 +73,8 @@ static uint32_t up_gen;                      /* bumped on every user bank change
 #define PREF_CHORD_ADD (0x04u << 16)
 #define PREF_HELP (0x08u << 16)
 #define PREF_DLY_PP_OFF (0x10u << 16)          /* MENU > AUDIO > PING PONG OFF (fx.c fx_dly_pp): the delay is mono */
+#define PREF_SEL_PAGES (0x40u << 16)           /* MENU > CONTROL > SELECT PAGES (ui_input.c select_pages): the SELECT knob steps the pages of the
+                                                * family shown, in place of the tempo (GLO + SELECT is the tempo still); clear = TEMPO */
 #define PREF_DLY_HALF (0x20u << 16)            /* MENU > AUDIO > DLY HALF ON (fx.c fx_dly_half): the delay line at half the rate */
 /* 1.3 (Discussions #112, #134): MENU > DISPLAY > HOME, what the HOME page shows under its four cards: 0 SCOPE (the
  * oscilloscope, as before), 1 TRACKS (the four tracks as rows: ui_graph.c draw_home_tracks), 2 LEVELS (1.5, #134: the

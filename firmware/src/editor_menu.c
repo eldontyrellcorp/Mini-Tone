@@ -32,6 +32,7 @@ static const uint8_t ED_MENU[][2] = {
     {MI_HELP, 24},                                     /* 1.5 (Discussion #156): HELP OFF / ON, SYSTEM */
     {MI_PINGPONG, 25},                                 /* the delay's PING PONG ON / OFF, AUDIO */
     {MI_DLYHALF, 26},                                  /* the delay line at HALF the sample rate OFF / ON, AUDIO */
+    {MI_SELECT, 27},                                   /* the SELECT knob: TEMPO / PAGES, CONTROL */
 };
 #define ED_MENU_N NELEM(ED_MENU)
 
