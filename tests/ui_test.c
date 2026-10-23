@@ -4324,16 +4324,16 @@ static int test_step_preview_chord_entry(void)
     frame();
     memcpy(before, t->step, sizeof before);
     rec0 = song.rec; mc0 = motion.count;
-    turn(EN_K1, 1);
+    turn(EN_PRESET, 1);
     blocks(2);
     ok = ui.cursor == 3u && !aud_req && !gated(t, 128u);
     bad += check("STEP PREVIEW OFF (the default): moving the cursor sounds nothing", ok);
     menu_put(MI_PREVIEW, 1);
-    turn(EN_K1, 1);
+    turn(EN_PRESET, 1);
     ok = ui.cursor == 4u && aud_req;
     blocks(1);
     ok &= gated(t, 67) == 1u && gated(t, 128u) == 1u && !aud_req;
-    turn(EN_K1, -1);
+    turn(EN_PRESET, -1);
     blocks(1);
     ok &= ui.cursor == 3u && gated(t, 60) && gated(t, 64) && !gated(t, 67);
     blocks(div_samples(2) / CTL + 2u);
@@ -4343,14 +4343,14 @@ static int test_step_preview_chord_entry(void)
     blocks(1);
     ok = ui.cursor == 4u && gated(t, 67) == 1u;
     blocks(div_samples(2) / CTL + 2u);
-    turn(EN_K1, -3);                                    /* (an empty step: nothing) */
+    turn(EN_PRESET, -3);                                    /* (an empty step: nothing) */
     blocks(1);
     ok &= ui.cursor == 1u && !gated(t, 128u);
     bad += check("STEP PREVIEW: PRESETS moves the cursor too and sounds it; an empty step sounds nothing", ok);
     ok = !memcmp(before, t->step, sizeof before) && song.rec == rec0 && motion.count == mc0 && !song.playing;
     bad += check("STEP PREVIEW never writes: the steps, the arming and the motion as they were", ok);
     song.playing = 1;
-    turn(EN_K1, 2);
+    turn(EN_PRESET, 2);
     ok = ui.cursor == 3u && !aud_req;
     aud_req = (uint16_t)(3u << 8 | 1u);                 /* (one asked for just before PLAY: dropped) */
     blocks(1);
@@ -4358,7 +4358,7 @@ static int test_step_preview_chord_entry(void)
     song.playing = 0;
     blocks(div_samples(2) / CTL + 2u);
     song.rec = 1u;                                      /* armed: step recording, stopped: it sounds */
-    turn(EN_K1, 1);
+    turn(EN_PRESET, 1);
     blocks(1);
     ok &= ui.cursor == 4u && gated(t, 67) == 1u && !memcmp(before, t->step, sizeof before);
     blocks(div_samples(2) / CTL + 2u);
@@ -4380,7 +4380,7 @@ static int test_step_preview_chord_entry(void)
     for (i = 0; i < NVOICE; i++) t->v[i].active = 0;
     cursor_set(1);
     memcpy(before, t->step, sizeof before);
-    turn(EN_K1, 1);
+    turn(EN_PRESET, 1);
     ok = grid_on() && ui.cursor == 2u && aud_req && t->step[2].hit;
     blocks(1);
     for (i = 0, mc0 = 0; i < NVOICE; i++) mc0 += t->v[i].active;
@@ -4415,29 +4415,29 @@ static int test_step_preview_chord_entry(void)
     tap_k(18);
     ok &= t->step[3].n == 4u && t->step[3].note[3] == kb_map(t, 18);
     bad += check("#155 ADD: a key whose note is there takes it out (the others keep their order); then there is room", ok);
-    turn(EN_K1, 2);
+    turn(EN_PRESET, 2);
     tap_k(9);
     ok = ui.cursor == 5u && t->step[5].n == 2u && t->step[5].note[0] == 50u && t->step[5].note[1] == kb_map(t, 9) &&
          t->step[3].n == 4u && !t->step[4].n;
     tap_k(9);
     ok &= t->step[5].n == 1u && t->step[5].note[0] == 50u && t->step[5].time == ST_NOTE;
-    turn(EN_K1, -1);
+    turn(EN_PRESET, -1);
     tap_k(9); tap_k(9);
     ok &= ui.cursor == 4u && !t->step[4].n && t->step[4].time == ST_REST;
     bad += check("#155 ADD: KNOB 1 moves on; a written step gets notes beside its own; the last one out leaves a REST", ok);
     t->step[6].time = ST_TIE;
-    turn(EN_K1, 2);
+    turn(EN_PRESET, 2);
     tap_k(7);
     ok = ui.cursor == 6u && t->step[6].time == ST_NOTE && t->step[6].n == 1u;
     t->p[P_VOICE] = V_MONO;
-    turn(EN_K1, 1);
+    turn(EN_PRESET, 1);
     tap_k(7); tap_k(9);
     ok &= ui.cursor == 7u && t->step[7].n == 1u && t->step[7].note[0] == kb_map(t, 9);
     tap_k(9);
     ok &= !t->step[7].n;
     bad += check("#155 ADD: a TIE step becomes a note step; MONO keeps one note (another key replaces it, the same takes it out)", ok);
     t->p[P_VOICE] = V_POLY;
-    turn(EN_K1, 1);
+    turn(EN_PRESET, 1);
     key_down(7); frame(); key_down(11); frame();       /* keys held together: each adds */
     key_up(7); key_up(11); frame();
     ok = ui.cursor == 8u && t->step[8].n == 2u;
@@ -5034,21 +5034,21 @@ static int test_cursor_step_leds(void)
     fm1_in.notes = 1u << 0;
     bad += check("#89 a key held lights with them", key_leds(0) == (1u << 0 | 1u << 7 | 1u << 11));
     fm1_in.notes = 0;
-    turn(EN_K1, 1);
+    turn(EN_PRESET, 1);
     ok = ui.cursor == 1u && key_leds(0) == 0u;          /* G#7: off the keyboard */
-    turn(EN_K1, 1);
+    turn(EN_PRESET, 1);
     ok &= ui.cursor == 2u && key_leds(0) == 0u;         /* a REST */
-    turn(EN_K1, 1);
+    turn(EN_PRESET, 1);
     ok &= ui.cursor == 3u && key_leds(0) == 1u << 14;   /* a TIE carries its G4 */
-    turn(EN_K1, 1);
+    turn(EN_PRESET, 1);
     ok &= ui.cursor == 4u && key_leds(0) == 0u;         /* empty */
     bad += check("#89 KNOB 1 moves the cursor and the keys follow its step (REST, empty, off the keys: dark)", ok);
-    turn(EN_K1, -4);
+    turn(EN_PRESET, -4);
     seq_start();
     events_block(CTL);
     bad += check("#89 playing: the keys show what plays, not the cursor step", song.playing && ui.cursor == 0u &&
                  key_leds(0) == play_leds());
-    turn(EN_K1, 3);
+    turn(EN_PRESET, 3);
     bad += check("#89   (the cursor on G4's step changes nothing while playing)", key_leds(0) == play_leds() &&
                  !((key_leds(0) >> 14) & 1u));
     transport_req = 2;

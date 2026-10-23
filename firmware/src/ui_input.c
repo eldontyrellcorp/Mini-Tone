@@ -1062,6 +1062,49 @@ static uint32_t sheet_oct(uint32_t pressed)
     return pressed;
 }
 
+/* KNOB 1 on SEQ > STEP (a melodic track): the START of the note under the cursor (a TIE: the note before it), one value from
+ * its step's start through the steps after it: a detent is 1/64 of a step (the step's NUDGE, -32..+31), and past either end
+ * the note moves to the next step (note_shift: its TIEs, chance, force, condition and locks with it) and goes on from the other
+ * end, so 64 detents are one step. Onto free steps only (NO ROOM); a step with no note: nothing (PRESETS and the grid's keys
+ * move the cursor). One undo per turn. The nudge sounds with the track's QUANTIZE off; a step move always */
+static void start_turn(int32_t steps)
+{
+    track_t *t = TSEL;
+    uint32_t i = note_start(t, ui.cursor), k = ui.note_k;
+    int32_t d = steps > 0 ? 1 : -1, n = accel(EN_K1, steps, 64), moved = 0;
+    if (chain_busy()) {
+        ui_message("STOP TO EDIT");
+        return;
+    }
+    if (i == NSTEP) {
+        ui_message("NO NOTE");
+        return;
+    }
+    n = n < 0 ? -n : n;
+    step_undo_take(t, 0x4100u);
+    for (; n > 0; n--) {
+        int32_t m = step_micro(&t->step[i]);
+        if ((d > 0 && m == MICRO_MAX) || (d < 0 && m == MICRO_MIN)) {   /* past the end of its step: the next one */
+            int32_t to = note_shift(t, i, d, 0);
+            if (to < 0) {
+                ui_message("NO ROOM");
+                break;
+            }
+            i = (uint32_t)to;
+            step_set_micro(&t->step[i], d > 0 ? MICRO_MIN : MICRO_MAX);
+            cursor_set(to);
+            ui.note_k = (uint8_t)k;
+        } else {
+            step_set_micro(&t->step[i], m + d);
+            moved = 1;
+        }
+    }
+    motion_undo_done(t);
+    sync_reload = 1;
+    if (moved && t->p[P_SQNT])
+        ui_message("QUANTIZE IS ON");
+}
+
 static void step_edit(uint32_t slot, int32_t steps)
 {
     step_t *st = &TSEL->step[ui.cursor];
@@ -1075,8 +1118,8 @@ static void step_edit(uint32_t slot, int32_t steps)
         return;
     }
     switch (slot) {
-    case 0:                                               /* STEP: the cursor */
-        cursor_move(ui.cursor + steps);
+    case 0:                                               /* START: the note's, step and fine (PRESETS: the cursor) */
+        start_turn(steps);
         break;
     case 1:                                               /* NOTE: transpose the step */
         if (!st->n) {
@@ -1442,6 +1485,10 @@ static void presets_turn(int32_t s)
     }
     if (ui.home || g == GR_BROWSE) {
         preset_step(s);
+    } else if (g == GR_ROLL && pg->scope == SC_STEP && !drum_track(TSEL) && !chain_busy()) {
+        cursor_move(ui.cursor + s);                       /* STEP: KNOB 1 is the note's START, PRESETS the cursor */
+        ui.hot_col = 0;
+        ui.hot_t = 40;
     } else if (g == GR_ROLL || g == GR_USER || g == GR_SLOTS || g == GR_PATS || g == GR_SONG || g == GR_EVENTS) {
         edit_param(0, s);                                 /* KNOB 1's (STEP: STOP TO EDIT while a song plays) */
         ui.hot_col = 0;

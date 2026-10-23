@@ -11,6 +11,7 @@
  *           locks, the sheet closes
  *   UNDO    one undo per turn or action (SAVE held)
  *   DRUM    the grid's sheet (ACC, RATCH, NUDGE, FILL, MOVE, COPY, DELETE for the lane's hit)
+ *   START   KNOB 1: the note's start, 1/64 of a step a detent, on into the next step (TIEs, locks with it); PRESETS the cursor
  *   GLO     E4 held: a fill; D#4: the next bar's
  * Built and run by tests/run_tests.sh. */
 #define UI_TEST_NO_MAIN 1
@@ -389,6 +390,53 @@ static int glo_fill(void)
     return bad;
 }
 
+static int start_knob(void)
+{
+    int bad = 0, ok, i;
+    track_t *t = roll(3);
+    put(t, 3, 60, ST_NOTE);
+    put(t, 4, 0, ST_TIE);
+    put(t, 9, 67, ST_NOTE);
+    motion_set_lock(t, 3, P_ATK, 9);
+    turn(EN_K1, 1);
+    ok = step_micro(&t->step[3]) == 1 && ui.cursor == 3u;
+    for (i = 0; i < 30; i++)
+        turn(EN_K1, 1);
+    ok &= step_micro(&t->step[3]) == 31 && ui.cursor == 3u;
+    bad += check("START: KNOB 1 is the note's start: a detent a 64th of its step (0 .. +31)", ok);
+    turn(EN_K1, 1);
+    ok = ui.cursor == 4u && t->step[4].n == 1u && t->step[4].note[0] == 60 && step_micro(&t->step[4]) == -32 &&
+         t->step[3].time == ST_REST && t->step[5].time == ST_TIE && motion_find(t, 4, P_ATK) >= 0 && note_len(t, 4) == 2u;
+    bad += check("  past the step's end the note goes on in the next step (-32): its TIE and lock with it, the cursor on it", ok);
+    for (i = 0; i < 64; i++)
+        turn(EN_K1, 1);
+    ok = ui.cursor == 5u && step_micro(&t->step[5]) == -32 && t->step[5].note[0] == 60;
+    for (i = 0; i < 65; i++)
+        turn(EN_K1, -1);
+    ok &= ui.cursor == 3u && step_micro(&t->step[3]) == 31 && t->step[3].note[0] == 60;
+    bad += check("  64 detents are one step, either way (the position is one continuous value)", ok);
+    for (i = 0; i < 400; i++)
+        turn(EN_K1, 1);
+    ok = ui.cursor == 7u && step_micro(&t->step[7]) == 31 && t->step[9].note[0] == 67 && note_len(t, 7) == 2u;   /* (7, 8 | 9) */
+    ui.msg_t = 0;
+    turn(EN_K1, 1);
+    ok &= ui.cursor == 7u && msg_is("NO ROOM") && t->step[7].note[0] == 60 && t->step[9].note[0] == 67;
+    bad += check("  stopped before the next note: NO ROOM, nothing overwritten", ok);
+    frames(2000);
+    hold(B_SAVE);
+    ok = step_micro(&t->step[7]) != 31 || ui.cursor != 7u;
+    bad += check("  SAVE held undoes the turn", ok);
+    t = roll(0);
+    turn(EN_PRESET, 1);
+    turn(EN_PRESET, 1);
+    ok = ui.cursor == 2u;
+    ui.msg_t = 0;
+    turn(EN_K1, 1);
+    ok &= ui.cursor == 2u && msg_is("NO NOTE") && !step_micro(&t->step[2]);
+    bad += check("  PRESETS moves the cursor; KNOB 1 on a step with no note: NO NOTE", ok);
+    return bad;
+}
+
 static int other_pages(void)
 {
     int bad = 0, ok;
@@ -406,7 +454,7 @@ static int other_pages(void)
 
 int main(void)
 {
-    int bad = drum_sheet() + glo_fill() + open_close() + rows() + zoom_del() + moves() + copy_delete() + other_pages();
+    int bad = start_knob() + drum_sheet() + glo_fill() + open_close() + rows() + zoom_del() + moves() + copy_delete() + other_pages();
     printf("%s\n", bad ? "SHEET TEST FAILED" : "sheet tests passed");
     return bad != 0;
 }

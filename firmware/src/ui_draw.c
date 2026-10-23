@@ -1150,7 +1150,13 @@ static void draw_columns(void)
             fmt_int(sn, (int32_t)ui.cursor + 1);
             str_cpy(sl, "/", 8);
             fmt_int(sl + 1, TSEL->p[P_SLEN]);
-            draw_column(0, "STEP", sn, sl, VAL(0u), -1, ICON_AUTO);
+            if (step_micro(st) && step_on(st)) {          /* START: the step, its nudge (1/64) as the unit */
+                int32_t mi = step_micro(st);
+                fmt_int(sl + (mi > 0), mi);
+                if (mi > 0)
+                    sl[0] = '+';
+            }
+            draw_column(0, "START", sn, sl, VAL(0u), -1, ICON_AUTO);
             draw_column(1, "NOTE", val, u, step_on(st) ? VAL(1u) : T_DIM, -1, ICON_AUTO);
             if (step_on(st)) {                            /* a note: its LEN (1.5, KNOB 3: the TIEs after it) */
                 fmt_int(sn, (int32_t)note_len(TSEL, ui.cursor));

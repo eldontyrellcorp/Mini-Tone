@@ -19,7 +19,8 @@ What changed since 1.0.0 (the version shows in ABOUT, the console and the editor
     (the drum grid's: ACC, RATCH, NUDGE, FILL, MOVE, COPY, DELETE); PRESETS zooms the roll to 8, 16, 32 or 64 steps
   - **per-note force** (GHOST, SOFT, NORM, HARD, ACC) and **per-note ratchet** (each note of a chord x2..x4 on its own)
   - **FILL conditions**: a step plays only during a fill, or only outside one; hold GLO + E4 for a fill, GLO + D#4 for the next bar
-  - **nudge in 64ths of a step** (it was sixteenths); live recording keeps your timing at that resolution
+  - **nudge in 64ths of a step** (it was sixteenths); live recording keeps your timing at that resolution; on SEQ > STEP **KNOB 1 is the
+    note's START**, a 64th a detent, on into the next step and so on (PRESETS now moves the cursor)
   - the **playing section's letter** (A..D) on each row of HOME > TRACKS while a song plays
   - the extra step data is saved with the project (in its extension; projects of 1.0.0 load as they were), not with user presets
     or in the web editor
@@ -136,6 +137,10 @@ it changes:
 - Hold FX, GLO, SCL, EDIT, REC or SEQ for its quick layer; hold SAVE to undo, HOME for the menu; hold LFO and turn a
   knob for a MOMENTARY change
 - Double-tap a layer's button to keep its layer open without holding; tap it again to close
+- On SEQ > STEP (a melodic track) KNOB 1 is the note's **START**: a detent moves the note under the cursor by 1/64 of a step (its
+  NUDGE, which plays with the track's QUANTIZE off) and, past the end of its step, on into the next one (its TIEs, chance, force,
+  condition and locks with it) and so on, 64 detents a step, onto free steps only. The cursor moves with the PRESETS knob (and the
+  grid's keys); on a step with no note KNOB 1 does nothing. KNOB 2 NOTE, KNOB 3 LEN, KNOB 4 FLAG as before. The drum grid keeps KNOB 1 as its cursor
 - On SEQ > STEP, hold a step and turn KNOB 1–4 to lock those parameters on that step (PRESETS: its NUDGE)
 - On SEQ > STEP, hold OCT+ for 0.4 s for the **sheet**, after [SLOOP](https://github.com/isod89/sloop-fm1) 2.8's NOTES page and its
   sheet. KNOB 1 picks a row (six show, they scroll), KNOB 2 sets it, PRESETS zooms the roll (8, 16, 32 or 64 steps), OCT+ tapped
