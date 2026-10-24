@@ -246,6 +246,7 @@ static uint32_t engine_icon(const char *name)
         {"ANALOG4", ICON_WAVE},               /* (a stand-in: a glyph of its own wanted) */
         {"BRAIDS", ICON_MOD},                 /* (a stand-in: a glyph of its own wanted) */
         {"TB303", ICON_WAVE},                 /* (a stand-in: a glyph of its own wanted) */
+        {"TR808", ICON_DRUM},
         {"CHIP", ICON_WAVE},
         {"SID", ICON_WAVE},                   /* (a stand-in: a glyph of its own wanted) */
     };

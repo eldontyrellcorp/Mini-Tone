@@ -74,9 +74,15 @@
 #if FELUCCA_TB303 && !FELUCCA_BRAIDS
 #error "FELUCCA_TB303 is engine 23 and needs the BRAIDS engine (22): build with FELUCCA_BRAIDS=1, or FELUCCA_TB303=0"
 #endif
-#define NENGINES (14 + FELUCCA_SWARM + FELUCCA_FMTONE + FELUCCA_WAVETONE + FELUCCA_FMDRUM + FELUCCA_SID + FELUCCA_CHIP + FELUCCA_DUAL + FELUCCA_ANA4 + FELUCCA_BRAIDS + FELUCCA_TB303)   /* SLICE (13), SWARM (14), FMTONE (15), WAVETONE (16), FMDRUM (17) come last: the other engines keep their numbers */
+#ifndef FELUCCA_TR808
+#define FELUCCA_TR808 1          /* the TR808 engine (eng_tr808.c), engine 24, after the TR-808 of the 8W8 module (GPL-3.0); it needs TB303 (23): the numbers are stored */
+#endif
+#if FELUCCA_TR808 && !FELUCCA_TB303
+#error "FELUCCA_TR808 is engine 24 and needs the TB303 engine (23): build with FELUCCA_TB303=1, or FELUCCA_TR808=0"
+#endif
+#define NENGINES (14 + FELUCCA_SWARM + FELUCCA_FMTONE + FELUCCA_WAVETONE + FELUCCA_FMDRUM + FELUCCA_SID + FELUCCA_CHIP + FELUCCA_DUAL + FELUCCA_ANA4 + FELUCCA_BRAIDS + FELUCCA_TB303 + FELUCCA_TR808)   /* SLICE (13), SWARM (14), FMTONE (15), WAVETONE (16), FMDRUM (17) come last: the other engines keep their numbers */
 #define ENGI_DIGITAL 1u          /* reserved without FELUCCA_FM4: never selectable (eng_ok), its sounds load as FM6 */
-#define NENG_SHOWN (2 + FELUCCA_FM4 + FELUCCA_SWARM + FELUCCA_FMTONE + FELUCCA_WAVETONE + FELUCCA_FMDRUM + FELUCCA_SID + FELUCCA_CHIP + FELUCCA_DUAL + FELUCCA_ANA4 + FELUCCA_BRAIDS + FELUCCA_TB303)   /* the engines one can pick: PRESETS, the EDIT layer, the editor,
+#define NENG_SHOWN (2 + FELUCCA_FM4 + FELUCCA_SWARM + FELUCCA_FMTONE + FELUCCA_WAVETONE + FELUCCA_FMDRUM + FELUCCA_SID + FELUCCA_CHIP + FELUCCA_DUAL + FELUCCA_ANA4 + FELUCCA_BRAIDS + FELUCCA_TB303 + FELUCCA_TR808)   /* the engines one can pick: PRESETS, the EDIT layer, the editor,
                                                 * in the display order of engines.c ENGINE_ORDER (FM6, DRUM + the optional ones; the older engines are
                                                 * still built, so saved sounds play, but are hidden) */
 #define UP_SLOTS 32u             /* user presets (upreset.c) */

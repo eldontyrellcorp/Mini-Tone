@@ -1359,7 +1359,7 @@ static const char *eng_abbr(const char *name)
                                        {"PHASE", "PHAS"}, {"LOFI", "LOFI"},
                                        {"SAMPLE", "SMPL"}, {"VOICE", "VOCL"}, {"TRIO", "TRIO"}, {"WHEEL", "WHEL"},
                                        {"GRAIN", "GRAN"}, {"PHYS", "PHYS"}, {"DRUM", "DRUM"},
-                                       {"NOISE", "NOIS"}, {"FM6", "FM6"}, {"SLICE", "SLCE"}, {"SWARM", "SWRM"}, {"FMTONE", "FMTN"}, {"WAVETONE", "WVTN"}, {"FMDRUM", "FMDR"}, {"SID", "SID"}, {"CHIP", "CHIP"}, {"DUALVCO", "DUAL"}, {"ANALOG4", "ANA4"}, {"BRAIDS", "BRAI"}, {"TB303", "TB30"}};
+                                       {"NOISE", "NOIS"}, {"FM6", "FM6"}, {"SLICE", "SLCE"}, {"SWARM", "SWRM"}, {"FMTONE", "FMTN"}, {"WAVETONE", "WVTN"}, {"FMDRUM", "FMDR"}, {"SID", "SID"}, {"CHIP", "CHIP"}, {"DUALVCO", "DUAL"}, {"ANALOG4", "ANA4"}, {"BRAIDS", "BRAI"}, {"TB303", "TB30"}, {"TR808", "T808"}};
     uint32_t i;
     for (i = 0; i < sizeof A / sizeof A[0]; i++)
         if (str_eq(name, A[i][0]))

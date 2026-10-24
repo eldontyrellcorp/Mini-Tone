@@ -110,6 +110,9 @@ static const char *const N_ENGNAME[] = {"ANALOG", FELUCCA_FM4 ? "DIGITAL" : "-",
 #if FELUCCA_TB303
                                              "TB303",
 #endif
+#if FELUCCA_TR808
+                                             "TR808",
+#endif
 };
 
 #define PD(l, f, mn, mx, df) {l, f, mn, mx, df, 0, 0}

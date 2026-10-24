@@ -67,6 +67,9 @@ static void a4_track_loaded(track_t *t) { (void)t; }
 #if FELUCCA_BRAIDS
 #include "eng_braids.c"         /* BRAIDS: Mutable Instruments' Braids macro oscillator, 48 models (one voice a part; braids_osc.c is MIT) */
 #endif
+#if FELUCCA_TR808
+#include "eng_tr808.c"          /* TR808: a TR-808 of 16 voices after the 8W8 module's circuit models (GPL-3.0), in fixed point */
+#endif
 #if FELUCCA_TB303
 #include "eng_tb303.c"          /* TB303: after Roland's TB-303: saw / square, a resonant ladder filter, decay envelope, accent (one voice a part) */
 #endif
@@ -141,6 +144,9 @@ static const engine_t *const ENGINES[NENGINES] = {
 #endif
 #if FELUCCA_TB303
     &ENG_TB303,                  /* 23 (FELUCCA_TB303=0 builds without it; it needs BRAIDS) */
+#endif
+#if FELUCCA_TR808
+    &ENG_TR808,                  /* 24 (FELUCCA_TR808=0 builds without it; it needs TB303) */
 #endif
 };
 
@@ -231,6 +237,9 @@ static const uint8_t ENGINE_ORDER[NENG_SHOWN] = {
 #endif
 #if FELUCCA_TB303
     23,                          /* TB303 */
+#endif
+#if FELUCCA_TR808
+    24,                          /* TR808 */
 #endif
 };
 
