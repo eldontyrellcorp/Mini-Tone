@@ -375,6 +375,8 @@ if [ -f build/gen/felucca_tables.h ]; then
     run "BRAIDS: pitch from C2 to C7 (the 44.1 kHz retiming), every model sounds and is bounded and deterministic, TIMB / COLR, BITS, RATE, SWP, the two sets of delay lines, engine switch, presets, level" "$OUT/braids_test"
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/tb303_test" tests/tb303_test.c -lm
     run "TB303: pitch, CUT and the filter slope, RES peak on the cutoff, ENVM / DEC, accent (level, brightness, the sweep), corners (bounded, no DC), determinism, presets, level" "$OUT/tb303_test"
+    $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/tr808_test" tests/tr808_test.c -lm
+    run "TR808: the 8W8 module's 16 voices in fixed point against its own renders (peak, levels, pitch), TUNE / DECY / velocity / LEVEL / DRV, the hats' choke, a hit on a ringing drum, ends, presets, the EDIT pages" "$OUT/tr808_test"
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/elek_rev_test" tests/elek_rev_test.c -lm
     run "ELEK REVERB: PRE, the reverb time (DEC, INF), the shelf (FRQ, GAIN), HPF / LPF, VOL, stereo, level against HALL, bounded, determinism" "$OUT/elek_rev_test"
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/delay_test" tests/delay_test.c -lm

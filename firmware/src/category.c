@@ -49,7 +49,7 @@ static const char *const PRESET_CAT[] = {
     "BPLLPUPLUDDDKFBF",          /* 22 BRAIDS: CSAW BASS, MORPH PAD, SAW SWARM, FOLD LEAD, VOWEL PAD, PLUCK, BOWED, FLUTE, BELL, KICK, SNARE,
                                   * CYMBAL, WAVETABLE, CLOUD, FM BASS, WIND */
     "BBBBLBLB",                  /* 23 TB303: ACID LINE, SQUARE BASS, SQUELCH, WARM SUB, RESO LEAD, ZAPPY, DUB STAB, RAVE */
-    "DDDDD",                     /* 24 TR808: KIT, LONG KICK, TIGHT KIT, TOM KIT, METAL KIT */
+    "DDDDD",                     /* 24 TR808: 808 KIT, BOOM KIT, TIGHT KIT, DIRTY KIT, METAL KIT */
 };
 _Static_assert(sizeof PRESET_CAT / sizeof PRESET_CAT[0] >= NENGINES, "PRESET_CAT: a string for every engine");
 static uint32_t preset_cat(uint32_t e, uint32_t k)    /* factory preset k of engine e */

@@ -36,6 +36,7 @@ enum { T8_BD, T8_SD, T8_LT, T8_MT, T8_HT, T8_LC, T8_MC, T8_HC, T8_RS, T8_CL, T8_
 
 /* ------------------------------------------------------------------------------------------- numbers --- */
 #define T8_ONE 65536             /* 1.0 volt */
+#define T8_QT 16                 /* a voice is over after 400 samples below this, as it is heard (Q16: -72 dBFS): the resonators' rounding keeps a few counts ringing for ever */
 
 static inline int32_t t8_m30(int32_t a, int32_t k) { return (int32_t)(((int64_t)a * k) >> 30); }   /* a * k, k Q30 */
 static inline int32_t t8_m16(int32_t a, int32_t k) { return (int32_t)(((int64_t)a * k) >> 16); }   /* a * k, k Q16 */
@@ -142,7 +143,7 @@ static int32_t t8_exp30_16(uint32_t x16) { return t8_exp30((uint64_t)x16 << 14);
 /* the per-sample factor of an exponential with time constant tau (us): e^(-1 / (tau fs)), Q30 */
 static int32_t t8_kq30(uint32_t tau_us)
 {
-    return t8_exp30((t8_inv64(tau_us | 1u, 0, 30) * 1486000ull) >> 16);         /* x = 22.676 / tau_us */
+    return t8_exp30((t8_inv64(tau_us ? tau_us : 1u, 0, 40) * 1486079ull) >> 26);         /* x = 22.676 / tau_us, Q30 */
 }
 /* 2^(x / 4096) for any x (Q16) */
 static uint32_t t8_pow2(int32_t x)
@@ -246,7 +247,7 @@ static void t8_bd_trigger(t8_bd_t *b, int32_t tune, int32_t decay, int32_t tone,
     b->quiet = 0;
 }
 
-static void t8_bd_run(t8_bd_t *b, int32_t *y, uint32_t n)
+static __attribute__((noinline)) void t8_bd_run(t8_bd_t *b, int32_t *y, uint32_t n, int32_t qt)
 {
     uint32_t i;
     for (i = 0; i < n; i++) {
@@ -279,9 +280,9 @@ static void t8_bd_run(t8_bd_t *b, int32_t *y, uint32_t n)
             b->bt.z1 = b->bt.z2 = b->fb = b->tone_z = b->dc_z = 0;
             out = 0;
         }
-        if (out > 2 || out < -2)
+        if (out > qt || out < -qt)
             b->quiet = 0;
-        else if (++b->quiet > 400)
+        else if (b->quiet != 0xFFFFu && ++b->quiet > 400)
             b->quiet = 0xFFFF;
         y[i] = out >> 1;                                                        /* Q16 volts = float 1.0 -> Q15 */
     }
@@ -331,7 +332,7 @@ static void t8_sd_trigger(t8_sd_t *d, int32_t tune, int32_t decay, int32_t snapp
     d->gate = 44;
     d->quiet = 0;
 }
-static void t8_sd_run(t8_sd_t *d, int32_t *y, uint32_t n)
+static __attribute__((noinline)) void t8_sd_run(t8_sd_t *d, int32_t *y, uint32_t n, int32_t qt)
 {
     uint32_t i;
     for (i = 0; i < n; i++) {
@@ -351,9 +352,9 @@ static void t8_sd_run(t8_sd_t *d, int32_t *y, uint32_t n)
         noise = t8_bqz(&T8_C_HPF1760, &d->nhp, vca);
         out = t8_m16(shells, 9771) + t8_m16(noise, 97701);                       /* x 0.1491, x 1.4908 */
         out = t8_bqz(&T8_C_HPF30, &d->ohp, out);
-        if (out > 2 || out < -2 || d->noise_env > (2 << 11))
+        if (out > qt || out < -qt || d->noise_env > (2 << 11))
             d->quiet = 0;
-        else if (++d->quiet > 400)
+        else if (d->quiet != 0xFFFFu && ++d->quiet > 400)
             d->quiet = 0xFFFF;
         y[i] = T8_Y(out);
     }
@@ -404,7 +405,7 @@ static void t8_tom_trigger(t8_tom_t *d, uint32_t which, int32_t tune, int32_t de
     d->age = 0;
     d->quiet = 0;
 }
-static void t8_tom_run(t8_tom_t *d, int32_t *y, uint32_t n)
+static __attribute__((noinline)) void t8_tom_run(t8_tom_t *d, int32_t *y, uint32_t n, int32_t qt)
 {
     uint32_t i;
     for (i = 0; i < n; i++) {
@@ -439,9 +440,9 @@ static void t8_tom_run(t8_tom_t *d, int32_t *y, uint32_t n)
             d->bt.z1 = d->bt.z2 = d->fb = d->dc = 0;
             out = 0;
         }
-        if (out > 2 || out < -2)
+        if (out > qt || out < -qt)
             d->quiet = 0;
-        else if (++d->quiet > 400)
+        else if (d->quiet != 0xFFFFu && ++d->quiet > 400)
             d->quiet = 0xFFFF;
         y[i] = T8_Y(out);
     }
@@ -464,7 +465,7 @@ static void t8_cl_trigger(t8_cl_t *d, int32_t tune, int32_t decay, int32_t volts
     d->gate = 44;
     d->quiet = 0;
 }
-static void t8_cl_run(t8_cl_t *d, int32_t *y, uint32_t n)
+static __attribute__((noinline)) void t8_cl_run(t8_cl_t *d, int32_t *y, uint32_t n, int32_t qt)
 {
     uint32_t i;
     for (i = 0; i < n; i++) {
@@ -481,9 +482,9 @@ static void t8_cl_run(t8_cl_t *d, int32_t *y, uint32_t n)
             d->bt.z1 = d->bt.z2 = d->fb = 0;
             out = 0;
         }
-        if (out > 2 || out < -2)
+        if (out > qt || out < -qt)
             d->quiet = 0;
-        else if (++d->quiet > 300)
+        else if (d->quiet != 0xFFFFu && ++d->quiet > 300)
             d->quiet = 0xFFFF;
         y[i] = T8_Y(out);
     }
@@ -519,7 +520,7 @@ static void t8_ma_trigger(t8_ma_t *d, int32_t tune, int32_t decay, int32_t attac
     d->rising = 1;
     d->quiet = 0;
 }
-static void t8_ma_run(t8_ma_t *d, int32_t *y, uint32_t n)
+static __attribute__((noinline)) void t8_ma_run(t8_ma_t *d, int32_t *y, uint32_t n, int32_t qt)
 {
     uint32_t i;
     for (i = 0; i < n; i++) {
@@ -539,9 +540,9 @@ static void t8_ma_run(t8_ma_t *d, int32_t *y, uint32_t n)
         d->bx = a1;
         d->by = b1;
         out = (int32_t)(((int64_t)b1 * d->level >> 27) * 124518 >> 16);          /* x level x 1.9 */
-        if (out > 2 || out < -2 || d->rising)
+        if (out > qt || out < -qt || d->rising)
             d->quiet = 0;
-        else if (++d->quiet > 300)
+        else if (d->quiet != 0xFFFFu && ++d->quiet > 300)
             d->quiet = 0xFFFF;
         y[i] = T8_Y(out);
     }
@@ -574,7 +575,7 @@ static void t8_cp_trigger(t8_cp_t *d, int32_t tune, int32_t decay)
     d->main_open = 1234;                                                         /* 2.8 x 441 */
     d->quiet = 0;
 }
-static void t8_cp_run(t8_cp_t *d, int32_t *y, uint32_t n)
+static __attribute__((noinline)) void t8_cp_run(t8_cp_t *d, int32_t *y, uint32_t n, int32_t qt)
 {
     uint32_t i;
     for (i = 0; i < n; i++) {
@@ -602,9 +603,9 @@ static void t8_cp_run(t8_cp_t *d, int32_t *y, uint32_t n)
         vca = nz > 0 ? (int32_t)(((int64_t)nz * ctrl) >> 27) : 0;
         out = t8_m16(t8_bq(&d->bp, vca), 40632);                                 /* x 0.62 */
         out = t8_bqz(&T8_C_HPF720, &d->hp, out);
-        if (out > 2 || out < -2 || d->main_target > 0 || d->age < d->main_open + 1u)
+        if (out > qt || out < -qt || d->main_target > 0 || d->age < d->main_open + 1u)
             d->quiet = 0;
-        else if (++d->quiet > 400)
+        else if (d->quiet != 0xFFFFu && ++d->quiet > 400)
             d->quiet = 0xFFFF;
         y[i] = T8_Y(out);
     }
@@ -661,7 +662,7 @@ static void t8_rs_trigger(t8_rs_t *d, int32_t tune, int32_t decay)
     d->age = 0;
     d->quiet = 0;
 }
-static void t8_rs_run(t8_rs_t *d, int32_t *y, uint32_t n)
+static __attribute__((noinline)) void t8_rs_run(t8_rs_t *d, int32_t *y, uint32_t n, int32_t qt)
 {
     uint32_t i;
     for (i = 0; i < n; i++) {
@@ -678,9 +679,9 @@ static void t8_rs_run(t8_rs_t *d, int32_t *y, uint32_t n)
         sig = (int32_t)(((int64_t)(tri + pul + nz) * d->env) >> 27);
         sig = t8_bqz(&T8_C_PEAK464, &d->pk, sig);
         out = t8_bq(&d->lp, t8_bq(&d->hp, sig));
-        if (out > 2 || out < -2 || d->env > (2 << 11))
+        if (out > qt || out < -qt || d->env > (2 << 11))
             d->quiet = 0;
-        else if (++d->quiet > 300)
+        else if (d->quiet != 0xFFFFu && ++d->quiet > 300)
             d->quiet = 0xFFFF;
         y[i] = T8_Y(out);
     }
@@ -706,7 +707,7 @@ static void t8_bank_set(t8_bank_t *b, int32_t tune_pot)
     for (i = 0; i < 6u; i++)
         b->inc[i] = (uint32_t)(((uint64_t)T8_BANK_F[i] * r) >> 16);
 }
-static void t8_bank_run(t8_bank_t *b, uint32_t n)
+static __attribute__((noinline)) void t8_bank_run(t8_bank_t *b, uint32_t n)
 {
     uint32_t i, k;
     for (i = 0; i < n; i++) {
@@ -790,7 +791,7 @@ static void t8_cb_trigger(t8_cb_t *d, int32_t tune, int32_t decay, int32_t volts
     d->body_k = t8_kq30(tau < 1000u ? 1000u : tau);
     d->quiet = 0;
 }
-static void t8_cb_run(t8_cb_t *d, const int16_t *pair, int32_t *y, uint32_t n)
+static __attribute__((noinline)) void t8_cb_run(t8_cb_t *d, const int16_t *pair, int32_t *y, uint32_t n, int32_t qt)
 {
     uint32_t i;
     for (i = 0; i < n; i++) {
@@ -803,9 +804,9 @@ static void t8_cb_run(t8_cb_t *d, const int16_t *pair, int32_t *y, uint32_t n)
         v = t8_m16(v, env);
         v = v + (int32_t)(((int64_t)v * v >> 16) << 1);                          /* v + 2 v^2 (the asymmetric clip) */
         out = t8_hp1(&d->dc, t8_m16(v, 124518), T8_A_DC200);                     /* x 1.9, the 200 Hz blocker */
-        if (out > 2 || out < -2 || env > 7)
+        if (out > qt || out < -qt || env > 7)
             d->quiet = 0;
-        else if (++d->quiet > 400)
+        else if (d->quiet != 0xFFFFu && ++d->quiet > 400)
             d->quiet = 0xFFFF;
         y[i] = T8_Y(out);
     }
@@ -840,7 +841,7 @@ static void t8_hat_trigger(t8_hat_t *d, int mode, int32_t decay)
     }
     d->quiet = 0;
 }
-static void t8_hat_run(t8_hat_t *d, const int16_t *bus, int32_t *y, uint32_t n)
+static __attribute__((noinline)) void t8_hat_run(t8_hat_t *d, const int16_t *bus, int32_t *y, uint32_t n, int32_t qt)
 {
     uint32_t i, k, np = d->mode ? 5u : 1u;
     int32_t lpk = d->mode ? T8_K_LPO : T8_K_LPC;
@@ -874,9 +875,9 @@ static void t8_hat_run(t8_hat_t *d, const int16_t *bus, int32_t *y, uint32_t n)
         for (k = 0; k < np; k++)
             v = t8_lp1(&d->lp[k], v, lpk);
         out = t8_hp1(&d->dc, v * (d->mode ? 5 : 8), T8_A_DC200);
-        if (out > 4 || out < -4 || d->e > (38661 << 11) >> 1)
+        if (out > qt || out < -qt || d->e > (38661 << 11) >> 1)
             d->quiet = 0;
-        else if (++d->quiet > 400)
+        else if (d->quiet != 0xFFFFu && ++d->quiet > 400)
             d->quiet = 0xFFFF;
         y[i] = T8_Y(out);
     }
@@ -923,7 +924,7 @@ static void t8_cy_trigger(t8_cy_t *d, int32_t tune, int32_t decay)
     d->k3 = t8_kq30(210000u);
     d->quiet = 0;
 }
-static void t8_cy_run(t8_cy_t *d, const int16_t *bus, int32_t *y, uint32_t n)
+static __attribute__((noinline)) void t8_cy_run(t8_cy_t *d, const int16_t *bus, int32_t *y, uint32_t n, int32_t qt)
 {
     uint32_t i;
     for (i = 0; i < n; i++) {
@@ -957,9 +958,9 @@ static void t8_cy_run(t8_cy_t *d, const int16_t *bus, int32_t *y, uint32_t n)
         c1 = t8_m16(c1, t8_m16(g2, 1049));                                       /* x 0.016 g2 */
         out = sus + body + t8_m16(top, 38011) + c1;                              /* x 1.0 body, x 0.58 top */
         out = t8_hp1(&d->dc, t8_bqz(&T8_C_CYOUT, &d->out, t8_m16(out, 48497)), T8_A_DC200);   /* x 0.74, the 1.5 kHz and 200 Hz high passes */
-        if (out > 4 || out < -4 || d->e1 > (38661 << 11) >> 1 || d->e2 > (38661 << 11) || d->e3 > (38661 << 11))
+        if (out > qt || out < -qt || d->e1 > (38661 << 11) >> 1 || d->e2 > (38661 << 11) || d->e3 > (38661 << 11))
             d->quiet = 0;
-        else if (++d->quiet > 400)
+        else if (d->quiet != 0xFFFFu && ++d->quiet > 400)
             d->quiet = 0xFFFF;
         y[i] = T8_Y(out);
     }
@@ -1088,6 +1089,7 @@ static void t8_run(t8_kit_t *K, t8_hit_t *D, const int16_t *p, int32_t *y, uint3
 {
     uint32_t i, vi = D->role & (T8_NV - 1u);
     int32_t tune = clamp(p[P_E0], 0, 127), dec = clamp(T8_DEC_DEF[vi] + p[P_E1] - 64, 0, 127), volts = (int32_t)D->volts << 6;
+    int32_t qt = (int32_t)(((uint32_t)T8_QT << 12) / T8_TRIM[vi]);                 /* the quiet threshold, as the voice's raw signal has it (before the trim) */
     if (D->trig) {
         D->trig = 0;
         switch (vi) {
@@ -1137,44 +1139,44 @@ static void t8_run(t8_kit_t *K, t8_hit_t *D, const int16_t *p, int32_t *y, uint3
         y[i] = 0;
     switch (vi) {
     case T8_BD:
-        t8_bd_run(&K->bd, y, n);
+        t8_bd_run(&K->bd, y, n, qt);
         D->live = K->bd.quiet != 0xFFFFu;
         break;
     case T8_SD:
-        t8_sd_run(&K->sd, y, n);
+        t8_sd_run(&K->sd, y, n, qt);
         D->live = K->sd.quiet != 0xFFFFu;
         break;
     case T8_LT: case T8_MT: case T8_HT: case T8_LC: case T8_MC: case T8_HC:
-        t8_tom_run(&K->tom[vi - T8_LT], y, n);
+        t8_tom_run(&K->tom[vi - T8_LT], y, n, qt);
         D->live = K->tom[vi - T8_LT].quiet != 0xFFFFu;
         break;
     case T8_CL:
-        t8_cl_run(&K->cl, y, n);
+        t8_cl_run(&K->cl, y, n, qt);
         D->live = K->cl.quiet != 0xFFFFu;
         break;
     case T8_MA:
-        t8_ma_run(&K->ma, y, n);
+        t8_ma_run(&K->ma, y, n, qt);
         D->live = K->ma.quiet != 0xFFFFu;
         break;
     case T8_CP:
-        t8_cp_run(&K->cp, y, n);
+        t8_cp_run(&K->cp, y, n, qt);
         D->live = K->cp.quiet != 0xFFFFu;
         break;
     case T8_RS:
-        t8_rs_run(&K->rs, y, n);
+        t8_rs_run(&K->rs, y, n, qt);
         D->live = K->rs.quiet != 0xFFFFu;
         break;
     case T8_CB: case T8_CH: case T8_OH: case T8_CY:
         if (!K->bank.valid)
             t8_bank_run(&K->bank, n);                                             /* the bank, once a block for all the metal voices */
         if (vi == T8_CB) {
-            t8_cb_run(&K->cb, K->bank.pair, y, n);
+            t8_cb_run(&K->cb, K->bank.pair, y, n, qt);
             D->live = K->cb.quiet != 0xFFFFu;
         } else if (vi == T8_CY) {
-            t8_cy_run(&K->cy, K->bank.bus, y, n);
+            t8_cy_run(&K->cy, K->bank.bus, y, n, qt);
             D->live = K->cy.quiet != 0xFFFFu;
         } else {
-            t8_hat_run(&K->hat[vi == T8_OH], K->bank.bus, y, n);
+            t8_hat_run(&K->hat[vi == T8_OH], K->bank.bus, y, n, qt);
             D->live = K->hat[vi == T8_OH].quiet != 0xFFFFu;
         }
         break;
@@ -1251,9 +1253,21 @@ static const param_desc_t *t8_tdesc(uint32_t id)
     return id >= P_FM1_ATK && id < P_FM1_ATK + T8_NV ? &T8_LEVEL[id - P_FM1_ATK] : 0;
 }
 
-/* {TUNE DECY BTON BATK SNAP DRV VEL CHOK} */
+/* {TUNE DECY BTON BATK SNAP DRV VEL CHOK}; every kit suggests the BEAT pattern (GM notes) */
 static const preset_t T8_PRESETS[] = {
     {"808 KIT", {64, 64, 42, 24, 89, 0, 127, 1}, {0, 100, 127, 100}, 0, 0, FX(0, 0, 0, 10), PAT(12)},
+    {"BOOM KIT", {56, 90, 70, 40, 89, 0, 127, 1}, {0, 100, 127, 100}, 0, 0, FX(0, 0, 0, 15), PAT(12)},
+    {"TIGHT KIT", {64, 28, 30, 24, 110, 0, 127, 1}, {0, 100, 127, 100}, 0, 0, FX(0, 0, 0, 5), PAT(12)},
+    {"DIRTY KIT", {64, 64, 42, 50, 89, 45, 127, 1}, {0, 100, 127, 100}, 0, 0, FX(10, 0, 0, 10), PAT(12)},
+    {"METAL KIT", {70, 64, 42, 24, 89, 0, 127, 2}, {0, 100, 127, 100}, 0, 0, FX(0, 0, 10, 20), PAT(12)},
+};
+/* the voices' levels of each (BD SD LT MT HT LC MC HC RS CL MA CP CB CH OH CY; 64 = 8W8's) */
+static const uint8_t T8_LEVELS[NELEM(T8_PRESETS)][T8_NV] = {
+    {64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64},
+    {84, 64, 70, 70, 70, 64, 64, 64, 60, 60, 56, 64, 60, 56, 64, 60},
+    {64, 70, 56, 56, 56, 56, 56, 56, 70, 64, 64, 64, 56, 70, 56, 48},
+    {72, 72, 64, 64, 64, 60, 60, 60, 64, 60, 52, 72, 56, 52, 56, 52},
+    {44, 44, 40, 40, 40, 40, 40, 40, 56, 64, 72, 56, 64, 84, 84, 80},
 };
 
 static const engine_t ENG_TR808 = {
@@ -1284,12 +1298,12 @@ static const engine_t ENG_TR808 = {
     .mem = sizeof(t8_kit_t),
 };
 
-/* the preset a track just loaded (ui.c apply_preset_to, tests/hostsim.c): the voices' levels, 64 */
+/* the preset a track just loaded (ui.c apply_preset_to, tests/hostsim.c): the voices' levels */
 static void t8_track_loaded(track_t *t)
 {
     uint32_t i;
     if (t->eng_req != ENGI_TR808)
         return;
     for (i = 0; i < T8_NV; i++)
-        t->p[P_FM1_ATK + i] = 64;
+        t->p[P_FM1_ATK + i] = T8_LEVELS[(uint32_t)t->preset % NELEM(T8_PRESETS)][i];
 }

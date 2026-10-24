@@ -3713,14 +3713,14 @@ static int test_quick_layers(void)
     ok = TSEL->eng_req == 14u && TSEL->preset == 0u && ui.layer == LAYER_EDIT && sync_reload && !gates();   /* (SWARM) */
     key_up(white(eng_rank(14))); frame();
     key_down(white(1)); key_up(white(1)); frame();
-    ok &= TSEL->eng_req == ENGI_FMTONE;                 /* (G3: FMTONE, second in ENGINE_ORDER: FM6 FMTONE SWARM DRUM WAVETONE FMDRUM SID CHIP DUALVCO ANALOG4 BRAIDS TB303) */
+    ok &= TSEL->eng_req == ENGI_FMTONE;                 /* (G3: FMTONE, second in ENGINE_ORDER: FM6 FMTONE SWARM DRUM WAVETONE FMDRUM SID CHIP DUALVCO ANALOG4 BRAIDS TB303 TR808) */
     key_down(white(LY_INIT - 1u)); key_up(white(LY_INIT - 1u)); frame();
-    ok &= TSEL->eng_req == eng_vis(LY_INIT - 1u);       /* (the last key: TB303, the 12th: all twelve shown have a key) */
-    ok &= FELUCCA_FM4 || (LY_INIT == NENG_SHOWN && eng_vis(LY_INIT - 1u) == 23u);
+    ok &= TSEL->eng_req == eng_vis(LY_INIT - 1u);       /* (the last key: TR808, the 13th: all thirteen shown have a key) */
+    ok &= FELUCCA_FM4 || (LY_INIT == NENG_SHOWN && eng_vis(LY_INIT - 1u) == 24u);
     ok &= !memcmp(TSEL->step, before.step, sizeof before.step) && TSEL->p[P_SLEN] == before.p[P_SLEN] &&
           TSEL->p[P_SLCR] == SL_STUT;
     btn_up(B_EDIT); frame();
-    bad += check("EDIT + white key n: the n-th engine shown (FMTONE 2nd, TB303 last), while playing; steps, LEN, SLICER stay", ok);
+    bad += check("EDIT + white key n: the n-th engine shown (FMTONE 2nd, TR808 last), while playing; steps, LEN, SLICER stay", ok);
     hold(B_SAVE);
     bad += check("  SAVE held: UNDO back to before the layer's loads, the steps untouched",
                  TSEL->eng_req == ENGI_FM6 && TSEL->preset == before.preset && !memcmp(TSEL->step, before.step, sizeof before.step));
@@ -4865,7 +4865,7 @@ static int test_fm4_retired(void)
         if (e < NENGINES)
             seen |= 1u << e;
     }
-    bad += check("PRESETS: the list holds the presets of every engine one can pick (and no other)", seen == all && NENG_SHOWN == 12u);
+    bad += check("PRESETS: the list holds the presets of every engine one can pick (and no other)", seen == all && NENG_SHOWN == 13u);
     go_page(GR_BROWSE);
     set_engine_of(TSEL, ENGI_FM6);
     for (i = 0, seen = 0; i < NENG_SHOWN; i++) {
@@ -4874,11 +4874,11 @@ static int test_fm4_retired(void)
     }
     bad += check("PRESETS KNOB 2: the engines in order (the removed ones and DIGITAL skipped), back to the first",
                  seen == all && TSEL->eng_req == ENGI_FM6 && eng_step(ENGI_FM6, 1) == ENGI_FMTONE && eng_step(ENGI_FMTONE, 1) == 14u &&
-                 eng_step(14, 1) == ENGI_DRUM && eng_step(ENGI_FM6, -1) == 23u && eng_step(ENGI_DRUM, 1) == ENGI_WAVETONE &&
+                 eng_step(14, 1) == ENGI_DRUM && eng_step(ENGI_FM6, -1) == 24u && eng_step(ENGI_DRUM, 1) == ENGI_WAVETONE &&
                  eng_step(ENGI_WAVETONE, 1) == ENGI_FMDRUM && eng_step(ENGI_FMDRUM, 1) == 18u && eng_step(18, 1) == 19u &&
-                 eng_step(19, 1) == 20u && eng_step(20, 1) == 21u && eng_step(21, 1) == 22u && eng_step(22, 1) == 23u && eng_step(23, 1) == ENGI_FM6 && eng_step(0, 1) == ENGI_FMTONE && !eng_ok(0) && !eng_ok(13));
+                 eng_step(19, 1) == 20u && eng_step(20, 1) == 21u && eng_step(21, 1) == 22u && eng_step(22, 1) == 23u && eng_step(23, 1) == 24u && eng_step(24, 1) == ENGI_FM6 && eng_step(0, 1) == ENGI_FMTONE && !eng_ok(0) && !eng_ok(13));
     {   /* the display order (engines.c ENGINE_ORDER): every engine one can pick once; the PRESETS list follows it */
-        static const char *const ORDER[] = {"FM6", "FMTONE", "SWARM", "DRUM", "WAVETONE", "FMDRUM", "SID", "CHIP", "DUALVCO", "ANALOG4", "BRAIDS", "TB303"};
+        static const char *const ORDER[] = {"FM6", "FMTONE", "SWARM", "DRUM", "WAVETONE", "FMDRUM", "SID", "CHIP", "DUALVCO", "ANALOG4", "BRAIDS", "TB303", "TR808"};
         uint32_t last = 0xFFu, r = 0, n = 0;
         ok = NENG_SHOWN == NELEM(ORDER);
         for (i = 0; ok && i < NENG_SHOWN; i++)
@@ -4893,7 +4893,7 @@ static int test_fm4_retired(void)
             last = e;
             r++;
         }
-        bad += check("engines shown FM6 FMTONE SWARM DRUM WAVETONE FMDRUM SID CHIP DUALVCO ANALOG4 BRAIDS TB303 (ENGINE_ORDER); PRESETS lists them so",
+        bad += check("engines shown FM6 FMTONE SWARM DRUM WAVETONE FMDRUM SID CHIP DUALVCO ANALOG4 BRAIDS TB303 TR808 (ENGINE_ORDER); PRESETS lists them so",
                      ok && r == NENG_SHOWN);
     }
     /* a user preset stored with engine 1: kept as it is, it loads as FM6 with the converted patch */

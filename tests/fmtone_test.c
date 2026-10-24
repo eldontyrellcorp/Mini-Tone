@@ -183,7 +183,7 @@ int main(void)
     uint32_t i, k, note = 57;                    /* A3: 220 Hz */
     double f0 = hz_of(note);
 
-    check("the engine is number 15, 14 engines come before it", ENGINES[15] == &ENG_FMTONE && NENGINES == 16u + FELUCCA_WAVETONE + FELUCCA_FMDRUM + FELUCCA_SID + FELUCCA_CHIP + FELUCCA_DUAL + FELUCCA_ANA4 + FELUCCA_BRAIDS + FELUCCA_TB303);
+    check("the engine is number 15, 14 engines come before it", ENGINES[15] == &ENG_FMTONE && NENGINES == 16u + FELUCCA_WAVETONE + FELUCCA_FMDRUM + FELUCCA_SID + FELUCCA_CHIP + FELUCCA_DUAL + FELUCCA_ANA4 + FELUCCA_BRAIDS + FELUCCA_TB303 + FELUCCA_TR808);
 
     /* 1. ratios */
     {
