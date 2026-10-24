@@ -1118,11 +1118,27 @@ static void stoch_edit(uint32_t slot, int32_t steps)
     stoch_t *g = stoch_of(TSEL);
     uint32_t pg = stoch_pg();
     int32_t d = accel(EN_K1 + slot, steps, 100);
-    if (pg > 3u)
+    if (pg > 4u)
         return;
-    if (pg == 0u) {
+    if (pg == 4u) {                                     /* EUCLID: LEN PULSES ROT (kept in order: PULSES <= LEN, ROT < LEN) */
         if (slot == 0u)
-            g->on = steps > 0;
+            g->euc_len = (uint8_t)clamp((int32_t)g->euc_len + accel(EN_K1 + slot, steps, 64), 1, 64);
+        else if (slot == 1u)
+            g->euc_pulses = (uint8_t)clamp((int32_t)g->euc_pulses + (steps > 0 ? 1 : -1), 0, g->euc_len);
+        else if (slot == 2u)
+            g->euc_rot = (uint8_t)clamp((int32_t)g->euc_rot + (steps > 0 ? 1 : -1), 0, g->euc_len - 1);
+        g->euc_pulses = g->euc_pulses > g->euc_len ? g->euc_len : g->euc_pulses;
+        g->euc_rot = g->euc_rot >= g->euc_len ? (uint8_t)(g->euc_len - 1u) : g->euc_rot;
+        return;
+    }
+    if (pg == 0u) {
+        if (slot == 0u) {                               /* MODE: OFF, STOCH, EUCLID (one at a time) */
+            int32_t m = (g->on ? 1 : g->euc_on ? 2 : 0) + (steps > 0 ? 1 : -1);
+            m = clamp(m, 0, 2);
+            g->on = m == 1; g->euc_on = m == 2;
+            if (g->euc_on && !g->euc_len)
+                euclid_defaults(g), g->euc_on = 1;
+        }
         else if (slot == 1u)
             g->dens = (uint8_t)clamp((int32_t)g->dens + d, 0, 100);
         else if (slot == 2u)

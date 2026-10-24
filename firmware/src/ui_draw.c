@@ -1120,7 +1120,7 @@ static void draw_columns(void)
             a[c2][0] = u[c2][0] = 0;
         if (pg == 0u) {
             lab[0] = "MODE"; lab[1] = "DENS"; lab[2] = "GROOVE"; lab[3] = "LOOP";
-            str_cpy(a[0], g->on ? "ON" : "OFF", 12);
+            str_cpy(a[0], g->on ? "STOCH" : g->euc_on ? "EUCLID" : "OFF", 12);
             fmt_int(a[1], g->dens); str_cpy(u[1], "%", 8); ra[1] = g->dens * 10;
             fmt_int(a[2], g->groove); str_cpy(u[2], "%", 8); ra[2] = g->groove * 10;
             if (g->loop) { fmt_int(a[3], g->loop); str_cpy(u[3], "STEPS", 8); }
@@ -1141,6 +1141,11 @@ static void draw_columns(void)
             fmt_int(a[1], g->vmax); ra[1] = g->vmax * 1000 / 127;
             fmt_int(a[2], g->rat); str_cpy(u[2], "%", 8); ra[2] = g->rat * 10;
             fmt_int(a[3], g->sld); str_cpy(u[3], "%", 8); ra[3] = g->sld * 10;
+        } else if (pg == 4u) {
+            lab[0] = "LEN"; lab[1] = "PULSES"; lab[2] = "ROT";
+            fmt_int(a[0], g->euc_len); str_cpy(u[0], "STEPS", 8); ra[0] = g->euc_len * 1000 / 64;
+            fmt_int(a[1], g->euc_pulses); ra[1] = g->euc_len ? g->euc_pulses * 1000 / g->euc_len : 0;
+            fmt_int(a[2], g->euc_rot); ra[2] = g->euc_len ? g->euc_rot * 1000 / g->euc_len : 0;
         } else {
             lab[0] = "STACK"; lab[1] = "SEED";
             fmt_int(a[0], g->stack); str_cpy(u[0], "%", 8); ra[0] = g->stack * 10;
@@ -1513,7 +1518,7 @@ static void ui_draw_page(uint32_t counting)
     }
     if (!ui.home && !page_visible(ui.page)) {          /* an OP page of a track that is not DIGITAL (without
                                                          * FELUCCA_FM4: any track): EDIT 1 */
-        ui.page = (uint8_t)page_first(FAM_EDIT);
+        ui.page = (uint8_t)page_first(cur_page()->fam == FAM_SEQ ? FAM_SEQ : FAM_EDIT);   /* (a STOCH / EUCLID page of the other mode: SEQ's first) */
         page_entered();
     }
     cursor_fix();

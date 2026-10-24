@@ -55,6 +55,7 @@ All by Hügelton Instruments (Leo Kuroshita), in this tree:
 | DotGothic16 font by The DotGothic16 Project Authors (<https://github.com/fontworks-fonts/DotGothic16>): the browser emulator's knob labels, served with its page (cut to printable ASCII; the font declares no Reserved Font Name) | SIL OFL 1.1 | `web/emu/fonts/DotGothic16-subset.woff`, `LICENSES/OFL-DotGothic16.txt` (also `web/emu/fonts/OFL.txt`) |
 | reSID 0.16 by Dag Lem (<https://github.com/simonowen/resid>, Simon Owen's fork): the SID engine's waveform generator and filter, ported to integer C, and the tables sampled from real MOS 6581 / 8580 chips (combined waveforms, filter cutoff curves), generated into `firmware/src/sid_tab.h` by `tools/gen_sid_tab.py`. reSID's "GPL-2.0-or-later" lets the firmware as a whole stay GPL-3.0-only; `tests/sid_test.c` checks the port against numbers measured with the original | GPL-2.0-or-later | `firmware/src/eng_sid.c`, `firmware/src/sid_tab.h`, `tools/gen_sid_tab.py`, `LICENSES/GPL-2.0-reSID.txt` |
 | SLOOP 2.8 by isod89 (<https://github.com/isod89/sloop-fm1>), a Felucca fork: the design of the STEP page's note sheet (OCT+ held: SLIDE, NUDGE, FORCE, MOVE, COPY, DELETE), and the note move / copy logic adapted from its NOTES editor (itself after Melodee's NOTES page by keremimo) | GPL-3.0 | `firmware/src/ui.c` (note_shift, step_force), `firmware/src/ui_input.c` (sheet_*), `firmware/src/ui_graph.c` (graph_sheet) |
+| 8W8 by athousanddetails (<https://github.com/athousanddetails/schwung-8W8>, commit 6fa3f70), a TR-808 for Schwung on Ableton Move: the TR808 engine's voices are its circuit models (`w8_*_circuit.h`, with the frequencies, component values, laws and trims) written again in fixed point, not copied; `tests/tr808_test.c` checks them against its own renders. Its reverb, delay, compressor and distortions are not used. (8W8 itself transcribes `sc808.scd`, MIT, for its Engine A, which this engine does not use either) | GPL-3.0 | `firmware/src/eng_tr808.c` |
 | JieLi AC79 SDK by JieLi Technology: three of its files go into every `.fwsc` package (below); none are in this tree | Apache-2.0 | `LICENSES/Apache-2.0.txt` |
 
 On the device, HOME held > ABOUT opens the information screen; turning PRESETS scrolls on into
@@ -97,10 +98,10 @@ Contributions are welcome under GPL-3.0-only.
 
 "Felucca" and "Hügelton Instruments" are names of Hügelton Instruments.
 
-"Braids" and "Mutable Instruments" are names of their owner, and "TB-303" is a name of Roland Corporation, "Analog Four",
+"Braids" and "Mutable Instruments" are names of their owner, and "TB-303" and "TR-808" are names of Roland Corporation, "Analog Four",
 "Syntakt" and "Digitone" of Elektron Music Machines: they name the sources and models the engines are written after, and nothing
-more. The BRAIDS engine runs code published under the MIT licence; the TB303 engine, as the other machine-named engines, is
-written from published descriptions, with no code or data of the machines.
+more. The BRAIDS engine runs code published under the MIT licence; the TB303 and TR808 engines, as the other machine-named engines, are
+written from published descriptions and analyses (the TR808's after the 8W8 module's), with no code or data of the machines.
 
 "M-VAVE" and "FM-1" are trademarks of their respective owners. Felucca is independent
 firmware that runs on FM-1 hardware. It is not affiliated with, endorsed by or supported

@@ -253,6 +253,9 @@ static const uint8_t MIDI_CC_ENG[NENGINES] = {
 #if FELUCCA_TB303
     0x23,                                             /* TB303 CUT (CC74), RES (CC71) */
 #endif
+#if FELUCCA_TR808
+    0x21,                                             /* TR808 DECY (CC74), TUNE (CC71) */
+#endif
 };
 /* a CC sets parameter id of track t as a knob would: 0..127 over its range */
 static void midi_cc_set(track_t *t, uint32_t id, uint32_t value)

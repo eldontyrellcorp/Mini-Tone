@@ -108,6 +108,45 @@ int main(void)
             putchar(',');
         js_str(ENGINES[eng_vis(k)]->name);
     }
+    printf("],\n\"TDESC\":[");                          /* the operator slots (61..80) as an engine names them (engine_t tdesc): [[id, desc]] */
+    for (e = 0; e < NENGINES; e++) {
+        uint32_t n = 0;
+        printf("%s\n [", e ? "," : "");
+        for (i = P_FM1_ATK; i <= P_FM4_LEVEL; i++) {
+            const param_desc_t *d = ENGINES[e]->tdesc ? ENGINES[e]->tdesc(i) : 0;
+            if (!d)
+                continue;
+            printf("%s[%d,", n++ ? "," : "", (int)i);
+            js_desc(d);
+            putchar(']');
+        }
+        putchar(']');
+    }
+    printf("],\n\"EPAGES\":[");                         /* each engine's EDIT pages (params.c PAGES, page_for_engine): [title, ids] */
+    for (e = 0; e < NENGINES; e++) {
+        uint32_t n = 0, ed = 0;
+        printf("%s\n [", e ? "," : "");
+        for (i = 0; i < NPAGES; i++) {
+            const page_t *pg = &PAGES[i];
+            uint32_t m = 0;
+            if (pg->fam != FAM_EDIT || !page_for_engine(i, e) || !strncmp(pg->title, "VOICE", 5))
+                continue;
+            for (k = 0; k < 4u; k++)
+                m += pg->id[k] != 0xFF;
+            if (!m)
+                continue;                                    /* (FM6's operator pages: no parameter ids) */
+            if (ENGINES[e]->name[0] == '-' && !ENGINES[e]->name[1])
+                continue;                                    /* (a removed engine has none) */
+            printf("%s[", n++ ? "," : "");
+            js_str(pg->scope == SC_ENGINE ? ENGINES[e]->page_title[ed++ & 1u] : pg->title);
+            printf(",[");
+            for (k = 0, m = 0; k < 4u; k++)
+                if (pg->id[k] != 0xFF)
+                    printf("%s%d", m++ ? "," : "", pg->id[k]);
+            printf("]]");
+        }
+        putchar(']');
+    }
     printf("],\n\"PATTERNS\":[");
     for (k = 0; k < NPATTERNS; k++) {
         printf("%s\n [", k ? "," : "");
@@ -217,6 +256,22 @@ int main(void)
                    x[i], d->max);
             js_str(val);
             putchar(']');
+        }
+    }
+    printf("],\n\"DTIME\":[");                           /* the delay TIME (F_DTIME): [value, text, unit, rank, a knob step up] */
+    {
+        static const int32_t dv[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 100, 999, 1000, 1014, 1015, 1016, 1100, 1500, 1501};
+        const param_desc_t *d = &GP[G_DTIME];
+        for (i = 0; i < sizeof dv / sizeof dv[0]; i++) {
+            char val[12];
+            const char *unit;
+            val[0] = 0;
+            param_format(d, dv[i], val, &unit);
+            printf("%s[%d,", i ? "," : "", (int)dv[i]);
+            js_str(val);
+            putchar(',');
+            js_str(unit && fmt_named == 0 ? unit : "");
+            printf(",%d,%d]", (int)enum_rank(d, dv[i]), (int)param_turn(d, dv[i], 1));
         }
     }
     printf("],\n\"SHOWN\":[");                         /* #48: the values as a knob steps them (params.c param_turn), */

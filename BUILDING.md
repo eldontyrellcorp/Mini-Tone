@@ -71,6 +71,7 @@ the engine numbers are stored):
 | `FELUCCA_ANA4` | 1 | the ANALOG4 engine (engine 21; needs `FELUCCA_DUAL`) |
 | `FELUCCA_BRAIDS` | 1 | the BRAIDS engine (engine 22; needs `FELUCCA_ANA4`; 54 kB of tables and 30 kB of code in flash, 16.4 kB of delay lines in the pool) |
 | `FELUCCA_TB303` | 1 | the TB303 engine (engine 23; needs `FELUCCA_BRAIDS`) |
+| `FELUCCA_TR808` | 1 | the TR808 engine (engine 24; needs `FELUCCA_TB303`; 17 kB of code in flash, 1.8 kB of engine memory a part) |
 | `FELUCCA_ICONS` | 1 | parameter icons on the knob cards |
 | `FELUCCA_FM4` | 0 | the retired DIGITAL engine (4-operator FM) instead of its FM6 conversion |
 

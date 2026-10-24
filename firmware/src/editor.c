@@ -485,8 +485,8 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         ed_v(d->def);
         ed_str(d->label, 8);
         ed_str(d->unit, 8);
-        if (d->fmt == F_ENUM && d->names)                  /* up to 24 (the matrix DST has 20) */
-            for (i = 0; i <= (uint32_t)(d->max - d->min) && i < 24u; i++)
+        if (d->fmt == F_ENUM && d->names)                  /* up to 32 (the matrix DST has 21, the engines 25) */
+            for (i = 0; i <= (uint32_t)(d->max - d->min) && i < 32u; i++)
                 ed_str(d->names[i], 8);
         break;
     case ED_STEP_GET:

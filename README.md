@@ -3,6 +3,23 @@
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-blue.svg)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/Sponsor-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/hugelton)
 
+## Mini-Tone 1.0.3
+
+What changed since 1.0.2:
+
+- **A new TR808 engine**: a TR-808 of 16 voices (bass drum, snare, three toms and three congas, rim shot, claves, maracas, clap, cowbell,
+  closed and open hats, cymbal), the circuit models of the 8W8 module for Ableton Move (GPL-3.0) rewritten in fixed point and checked against
+  its own renders (Engines, below). General MIDI notes strike the voices, a hit on a ringing drum adds to it, and a closed hat cuts the open one
+- **EUCLID mode** (after the Digitone 2's): a track plays an Euclidean rhythm E(PULSES, LEN) turned by ROT, in a loop of its own
+  (a polymeter against the pattern's LEN), instead of its pattern (SEQ > EUCLID, one layer; exclusive with STOCHASTIC)
+- **SEQ shows the pages of the track's generator mode only**: OFF the STOCH page (its MODE), STOCHASTIC its four, EUCLID STOCH and EUCLID
+- **The web editor follows the firmware again**: six tracks, the 25 engine numbers, the 111-parameter layout (LFO 2, the INSERT, SPREAD,
+  QUANTIZE, ENV SYNC), each engine's own EDIT pages, the delay TIME as the device shows it; `web/sync_mock.mjs` regenerates its tables from the
+  firmware (`tests/descdump.c`) so they cannot drift. The editor protocol names enums up to 32 values (24 before, the engine list has 25)
+- **Fixes**: the engine list (MENU / the editor) had no name for SLICE's number, so every engine after it was shifted by one name and TB303 could
+  not be picked from it; the host tests for the old four-track formats, the removed engines and STOCHASTIC mode run again (the suite fails only
+  on one BRAIDS hash that depends on the host's libm)
+
 ## Mini-Tone 1.0.2
 
 What changed since 1.0.1:
@@ -148,7 +165,7 @@ it changes:
   NUDGE, which plays with the track's QUANTIZE off) and, past the end of its step, on into the next one (its TIEs, chance, force,
   condition and locks with it) and so on, 64 detents a step, onto free steps only. The cursor moves with the PRESETS knob (and the
   grid's keys); on a step with no note KNOB 1 does nothing. KNOB 2 NOTE, KNOB 3 LEN, KNOB 4 FLAG as before. The drum grid keeps KNOB 1 as its cursor
-- **STOCHASTIC mode:** tap SEQ to go on from AUTOMATION to the four STOCH pages (STOCH, NOTES, SHAPE, STACK), for the selected track.
+- **STOCHASTIC mode:** tap SEQ to go on from AUTOMATION to the STOCH page and, with MODE on STOCH, its three others (NOTES, SHAPE, STACK), for the selected track.
   With MODE ON the track draws each step as it plays, from these settings; its pattern is not played and not changed. MODE OFF plays the pattern as before.
   - **STOCH:** MODE (KNOB 1, OFF / ON), DENS (the chance a step plays, 0..100 %), GROOVE (how much likelier the downbeats are than the
     offbeats), LOOP (FREE: a new draw every pass; 1..64: the same loop of that many steps every pass, for the same SEED)
@@ -158,6 +175,12 @@ it changes:
   - **SHAPE:** VEL MIN and VEL MAX (each velocity is drawn between them), RAT (the chance of a ratchet x2..x4), SLIDE (the chance a note
     slides into the next)
   - **STACK:** the chance of each extra note of a chord (up to two more), and the SEED of the loop
+- **EUCLID mode:** the EUCLID page follows the STOCH page when MODE is EUCLID (NOTES, SHAPE and STACK are then hidden, as EUCLID is with the other modes). MODE on the STOCH page (KNOB 1) steps OFF / STOCH / EUCLID: one
+  at a time, the track's pattern rests untouched in both. With EUCLID the track plays the pattern's first note step (its notes,
+  velocity, accent, slide and ratchet; C4, or lane 1 on a DRUM track, if the pattern holds none) on each hit of the rhythm.
+  - **EUCLID:** LEN (KNOB 1, 1..64 steps: the rhythm's own loop, restarted when the song starts), PULSES (KNOB 2, 0..LEN: the hits, spread
+    as evenly as they can be), ROT (KNOB 3, 0..LEN-1: the rhythm turned that many steps later). The row of steps shows the hits and
+    the step playing
   - On a STOCH page **OCT+ tapped is REROLL** (another SEED; with LOOP FREE every pass is new anyway) and **OCT+ held (0.4 s) is LOCK**: the
     LEN steps it would draw are written into the pattern, MODE goes OFF, and you edit them as any pattern (one undo, SAVE held)
   - Settings are saved with the project (in its extension; projects saved before load with the mode OFF), not in user presets
@@ -347,6 +370,17 @@ loads with its values and plays silence):
   envelope), ACNT (the accent: louder, a deeper envelope, and the accent sweep that builds over accented notes), DRV and the
   square's width PW. The sequencer's SLIDE and ACCENT do the rest: a slide glides without a new envelope (MONO, as the presets
   are), an accented step is played at velocity 127. One voice a track
+- **TR808**: a TR-808 of 16 voices after the circuit models of the 8W8 module for Ableton Move (<https://github.com/athousanddetails/schwung-8W8>,
+  GPL-3.0), rewritten in fixed point: the bass drum (a bridged-T resonator in an op-amp loop: DECY is its loop gain, with the pitch sigh and the
+  attack-time jump), the snare (two shells at 173 and 336 Hz and a noise path through a swing-type VCA), the three toms and three congas
+  (the same resonator, struck two ways), the rim shot and the claves, the maracas, the hand clap (three bursts and a tail), the cowbell, the
+  closed and the open hat and the cymbal (one bank of six Schmitt oscillators, shared, through each voice's own filters and gate). General MIDI
+  notes (35..81) strike the voices; a hit on a drum still ringing adds to it, as on the machine. `tests/tr808_test.c` renders every voice
+  and compares it with the 8W8's own render of it (peak, level, pitch). Not in it: 8W8's reverb, delay, compressor and per-voice distortions
+  (the track's sends, DIST and INSERT do those). **EDIT 1** TUNE (all voices, +-2 semitones for the toms and congas, +-12 for the others;
+  64 is the machine's), DECY (each voice's own decay pot moved together), BTON and BATK (the kick's tone and attack), **EDIT 2** SNAP (the
+  snare's snappy), DRV (a soft clip), VEL (how far velocity moves the level), CHOK (OFF, CH>OH, BOTH: the hats are one hat), **LEVELS 1..4**
+  the 16 levels (BD SD LT MT, HT LC MC HC, RS CL MA CP, CB CH OH CY). Five kits: 808 KIT, BOOM KIT, TIGHT KIT, DIRTY KIT, METAL KIT
 - **DRUM**: an 8-lane kit of Felucca's own drum voices on the General MIDI key map. KIT picks the
   standard kit or one of five virtual-analog (VA) kits in the manner of
   classic analog drum machines (the numbers are a hint), every lane its own voice: **80** (deep sine kick with a long decay, noisy snare,

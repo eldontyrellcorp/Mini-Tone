@@ -29,6 +29,8 @@ FUNCS = ["digital_render", "digital_render_legacy", "digital_render_custom",
          "rev_room", "rev_spring", "rev_hall", "rev_elek", "rev_side_mix", "dly_side_mix",   # the reverb bus (fx.c): REVERB TYPE ROOM / SPRING / HALL / ELEK (and its stereo), the ping-pong side
          "track_insert", "ins_drive", "ins_swept",           # the per-track INSERT (fx.c, 1.5), while a TYPE plays
          "tb_render", "bra_render", "dig_render", "ana_render", "br_svf_process",   # TB303, BRAIDS: the engine, the macro oscillator's blocks
+         "t8_bd_run", "t8_sd_run", "t8_tom_run", "t8_cl_run", "t8_ma_run", "t8_cp_run", "t8_rs_run", "t8_bank_run",   # TR808: the voices
+         "t8_cb_run", "t8_hat_run", "t8_cy_run", "t8_render",
          "mac_CSaw", "mac_Morph", "mac_SawSquare", "mac_SineTriangle", "mac_Buzz", "mac_Sub", "mac_DualSync", "mac_Triple",
          "mac_SawComb", "mac_Digital",                      # .. its analog models (braids_osc.c)
          "ana_RenderSaw", "ana_RenderVariableSaw", "ana_RenderCSaw", "ana_RenderSquare", "ana_RenderTriangle", "ana_RenderSine",

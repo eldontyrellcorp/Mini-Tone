@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
+#ifndef DRUM_VOICE_C
+#define DRUM_VOICE_C           /* (the DRUM and TR808 engines both take it) */
 /* Drum voices: lean fixed-point drums for a kit of 8 lanes. Felucca's own design, voiced by ear.
  *
  * Every tuned part is a damped sine (a phase accumulator, the SINE table, a decaying envelope): exact
@@ -951,3 +953,5 @@ static void dv_default(dv_param_t *p, uint32_t type)
     p->accent = 0;
     p->tune = 0;
 }
+
+#endif /* DRUM_VOICE_C */

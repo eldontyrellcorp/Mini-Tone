@@ -77,6 +77,8 @@ static const char *const N_ENGNAME[] = {"ANALOG", FELUCCA_FM4 ? "DIGITAL" : "-",
                                              "DRUM", "NOISE", "FM6",
 #if FELUCCA_SLICE
                                              "SLICE",
+#else
+                                             "-",                      /* (a name for every engine number: ENGINES[] keeps 13 either way) */
 #endif
 #if FELUCCA_SWARM
                                              "SWARM",
@@ -107,6 +109,9 @@ static const char *const N_ENGNAME[] = {"ANALOG", FELUCCA_FM4 ? "DIGITAL" : "-",
 #endif
 #if FELUCCA_TB303
                                              "TB303",
+#endif
+#if FELUCCA_TR808
+                                             "TR808",
 #endif
 };
 
@@ -601,6 +606,11 @@ static const page_t PAGES[] = {
     {"F1 ENV", FAM_EDIT, SC_TRACK, GR_NONE, {P_FM1_ATK, P_FM1_DEC, P_FM1_SUS, P_FM1_REL}, 22},
     {"F1 AMT", FAM_EDIT, SC_TRACK, GR_NONE, {P_FM3_SUS, P_FM4_SUS, 0xFF, 0xFF}, 22},
     {"ENV 2", FAM_EDIT, SC_TRACK, GR_NONE, {P_FM2_ATK, P_FM2_DEC, P_FM2_SUS, P_FM2_REL}, 22},
+    /* TR808's (eng_tr808.c), own = 25: the 16 voices' levels, in the operator slots (its tdesc names them) */
+    {"LEVELS", FAM_EDIT, SC_TRACK, GR_NONE, {P_FM1_ATK, P_FM1_DEC, P_FM1_SUS, P_FM1_REL}, 25},
+    {"LEVELS 2", FAM_EDIT, SC_TRACK, GR_NONE, {P_FM1_LEVEL, P_FM2_ATK, P_FM2_DEC, P_FM2_SUS}, 25},
+    {"LEVELS 3", FAM_EDIT, SC_TRACK, GR_NONE, {P_FM2_REL, P_FM2_LEVEL, P_FM3_ATK, P_FM3_DEC}, 25},
+    {"LEVELS 4", FAM_EDIT, SC_TRACK, GR_NONE, {P_FM3_SUS, P_FM3_REL, P_FM3_LEVEL, P_FM4_ATK}, 25},
     {"VOICE", FAM_EDIT, SC_TRACK, GR_NONE, {P_VOICE, P_GLIDE, P_GLMODE, P_PRIO}},
     {"VOICE 2", FAM_EDIT, SC_TRACK, GR_NONE, {P_ALLOC, P_DETUNE, P_PAN, P_MUTE}},
     {"VOICE 3", FAM_EDIT, SC_TRACK, GR_NONE, {P_SPRD, 0xFF, 0xFF, 0xFF}},   /* #148: SPREAD */
@@ -625,12 +635,44 @@ static const page_t PAGES[] = {
     {"NOTES", FAM_SEQ, SC_STOCH, GR_STOCH, {0xFF, 0xFF, 0xFF, 0xFF}},
     {"SHAPE", FAM_SEQ, SC_STOCH, GR_STOCH, {0xFF, 0xFF, 0xFF, 0xFF}},
     {"STACK", FAM_SEQ, SC_STOCH, GR_STOCH, {0xFF, 0xFF, 0xFF, 0xFF}},
+    {"EUCLID", FAM_SEQ, SC_STOCH, GR_STOCH, {0xFF, 0xFF, 0xFF, 0xFF}},   /* LEN PULSES ROT (the MODE on STOCH picks it) */
     /* HOME's pages (1.2): HOME tapped on HOME the MIXER (up to 1.1.5 GLO's; LEVEL PAN REV MUTE), again CLOCK (up to 1.1.5
      * GLO > GLOBAL; its TUNE is MENU > AUDIO's now), again HOME (ui.c home_tap) */
     {"MIXER", FAM_TRK, SC_TRK, GR_TRK, {0, 1, 2, 3}},
     {"CLOCK", FAM_TRK, SC_GLOBAL, GR_NONE, {G_BPM, G_SWING, G_CLOCK, 0xFF}},
 };
 #define NPAGES (sizeof(PAGES) / sizeof(PAGES[0]))
+/* does engine e show page i? (ui.c page_visible adds the REVERB TYPE and STOCH rules; tests/descdump.c lists the EDIT family's
+ * per engine, for the editor's EDIT pages) */
+static int page_for_engine(uint32_t i, uint32_t e)
+{
+    if (PAGES[i].own)                                 /* an engine's own pages (WAVETONE's INTERACT, UTIL, NOISE) */
+        return e + 1u == PAGES[i].own;
+    if (PAGES[i].scope == SC_TRACK && PAGES[i].id[0] >= P_LN0 && PAGES[i].id[0] <= P_LN7)
+        return e == ENGI_DRUM;
+    if (PAGES[i].id[0] == P_FTYPE)                    /* FILTER (1.5, #104): ANALOG's, which is gone: never shown */
+        return 0;
+    if (PAGES[i].graph >= GR_FMOP && PAGES[i].graph <= GR_FMENV)
+        return e == ENGI_FM6;
+#if FELUCCA_SLICE
+    if (PAGES[i].graph == GR_SLICES)
+        return ENGINES[e] == &ENG_SLICE;
+#else
+    if (PAGES[i].graph == GR_SLICES)
+        return 0;
+#endif
+    if (PAGES[i].fam == FAM_EDIT && PAGES[i].id[0] >= P_FM1_ATK && PAGES[i].id[0] <= P_FM4_LEVEL) {
+        /* the operator slots' pages: DIGITAL's (OP1..4 ENV: GR_ADSR; OP LEVEL: from P_FM1_LEVEL) and FMTONE's (the rest) */
+        if (PAGES[i].graph == GR_ADSR || PAGES[i].id[0] == P_FM1_LEVEL)
+            return FELUCCA_FM4 && e == ENGI_DIGITAL;
+#if FELUCCA_FMTONE
+        return ENGINES[e] == &ENG_FMTONE;
+#else
+        return 0;
+#endif
+    }
+    return 1;
+}
 static uint8_t mod_ui_slot;      /* the MOD page: the matrix slot (0..3) KNOB 2..4 edit */
 
 static const param_desc_t *page_desc(const page_t *pg, uint32_t slot, int16_t **valp)

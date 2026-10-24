@@ -822,6 +822,7 @@ static void seq_start(void)
     for (i = 0; i < NTRK; i++) {                   /* every track from its step 0, together */
         track_t *t = &trk[i];
         t->seq_idx = (uint16_t)(t->p[P_SLEN] - 1);
+        t->euc_pos = 0;
         t->seq_pos = 0x7FFFFFFF;                   /* step 0 fires on the first block */
         t->rskip_n = 0;
         t->rh_n = 0;
@@ -925,6 +926,8 @@ static stoch_t *stoch_of(track_t *t)
 {
     if (!t->stoch.vmax)
         stoch_defaults(&t->stoch);
+    if (!t->stoch.euc_len)
+        euclid_defaults(&t->stoch);
     return &t->stoch;
 }
 static uint32_t stoch_rand(track_t *t, uint32_t n)
@@ -996,6 +999,35 @@ static __attribute__((noinline)) void stoch_gen(track_t *t, uint32_t idx)
     if (n < g->sld && !drum)
         s->flags |= SF_SLIDE;
 }
+/* ---- EUCLID mode (core.h stoch_t euc_*): the rhythm E(PULSES, LEN) turned by ROT, in a loop of its own (LEN steps: against
+ * the pattern's, a polymeter), from step 0 at the start. A hit plays the pattern's first note step (its notes, velocity,
+ * accent, slide, ratchet), or C4 / lane 1 at velocity 100 when the pattern holds none: write the sound into step 1 */
+static __attribute__((noinline)) void euclid_gen(track_t *t, uint32_t idx)
+{
+    const stoch_t *g = stoch_of(t);
+    step_t *s = &t->stoch_step;
+    uint32_t len = t->p[P_SLEN] > 0 ? (uint32_t)t->p[P_SLEN] : 1u, i, hit;
+    (void)idx;
+    hit = euclid_hit(g, t->euc_pos % g->euc_len);
+    t->euc_pos = (t->euc_pos + 1u) % g->euc_len;
+    memset(s, 0, sizeof *s);
+    s->time = ST_REST;
+    if (!hit)
+        return;
+    for (i = 0; i < len && i < NSTEP; i++)
+        if (seq_steps(t)[i].time == ST_NOTE && (seq_steps(t)[i].n || seq_steps(t)[i].hit)) {
+            *s = seq_steps(t)[i];
+            return;
+        }
+    s->time = ST_NOTE;
+    s->vel = 100;
+    if (drum_track(t))
+        s->hit = 1;
+    else {
+        s->n = 1;
+        s->note[0] = 60;
+    }
+}
 
 #define SEQ_REP (1u << 16)
 #define SEQ_ROLLED (1u << 17)   /* seq_tick rolled the chance already (before the step's parameter locks): it passed */
@@ -1006,7 +1038,7 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
     uint32_t vel = (s->flags & SF_ACCENT) ? 127u : (s->vel ? s->vel : 96u);
     uint32_t slide_in = t->seq_hold && t->seq_n && !(skip & SEQ_REP);
     uint32_t len = t->p[P_SLEN] ? (uint32_t)t->p[P_SLEN] : 1u;
-    uint32_t next_tie = !t->stoch.on && seq_steps(t)[(idx + 1u) % len].time == ST_TIE;
+    uint32_t next_tie = !GEN_ON(t) && seq_steps(t)[(idx + 1u) % len].time == ST_TIE;
     uint32_t hits = step_ratchet(s);
     uint8_t nn[4 + NLANE], vv[4 + NLANE];           /* the notes it plays: its notes, then its hits */
     uint32_t m = 0, sk = 0, pn = s->time == ST_NOTE && step_nrat_any(s) && !(skip & SEQ_REP);   /* per-note ratchet */
@@ -1155,7 +1187,7 @@ static __attribute__((noinline)) void seq_ratchet_notes(track_t *t, const step_t
 }
 static __attribute__((noinline)) void seq_ratchet(track_t *t, uint32_t period, uint32_t n)
 {
-    const step_t *s = t->stoch.on ? &t->stoch_step : &seq_steps(t)[t->seq_idx];
+    const step_t *s = GEN_ON(t) ? &t->stoch_step : &seq_steps(t)[t->seq_idx];
     uint32_t hits = step_ratchet(s);
     if (t->rn_on) {
         seq_ratchet_notes(t, s, period, n);
@@ -1194,8 +1226,11 @@ static __attribute__((noinline)) void seq_play(track_t *t, uint32_t idx, uint32_
 {
     const step_t *s = &seq_steps(t)[idx];
     const motion_store_t *m = chain_motion(t);
-    if (t->stoch.on) {                              /* STOCHASTIC: this step is drawn now (the pattern rests) */
-        stoch_gen(t, idx);
+    if (GEN_ON(t)) {                                /* STOCHASTIC / EUCLID: this step is drawn now (the pattern rests) */
+        if (t->stoch.on)
+            stoch_gen(t, idx);
+        else
+            euclid_gen(t, idx);
         s = &t->stoch_step;
     }
     uint32_t skip = SEQ_ROLLED, i, k;
@@ -1286,7 +1321,7 @@ static void seq_tick(track_t *t, uint32_t n)
         t->seq_pos = t->seq_pos >= 0x7FFFFFFFu ? (chain.running ? chain.carry : 0u) : t->seq_pos - cur_len;
         t->seq_idx = (uint16_t)((t->seq_idx + 1u) % len);
         rec_hold(t, t->seq_idx, len);
-        if ((t->p[P_SQNT] || t->stoch.on) && !t->nd_fired)
+        if ((t->p[P_SQNT] || GEN_ON(t)) && !t->nd_fired)
             seq_play(t, t->seq_idx, period);        /* QUANTIZE ON: every step on its start, as before 1.2 */
         else
             seq_nd_start(t, period, len);

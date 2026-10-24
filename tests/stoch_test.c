@@ -222,7 +222,7 @@ static void open_hold(void)                             /* OCT+ held 0.5 s */
 static void seq_next(void)                              /* SEQ tapped (slowly: two quick taps keep the layer) */
 {
     frames(1000);
-    seq_next();
+    press(B_SEQ);
     frames(100);
 }
 static int pages(void)
@@ -245,6 +245,7 @@ static int pages(void)
     ok &= g->loop == 3u;
     turn(EN_K1, -1);
     ok &= g->on == 0u;
+    turn(EN_K1, 1);                                     /* (the other pages show with STOCH on only) */
     bad += check("PAGES: STOCH: MODE ON / OFF, DENS, GROOVE, LOOP on KNOB 1..4", ok);
     seq_next();
     ok = stoch_pg() == 1u;
@@ -263,7 +264,7 @@ static int pages(void)
     ok = stoch_pg() == 2u;
     turn(EN_K1, -100);
     ok &= g->vmin == 1u;
-    turn(EN_K2, -100);
+    turn(EN_K2, -200);                                  /* (VMAX 110 -> down to VMIN) */
     ok &= g->vmax == g->vmin;
     turn(EN_K2, 200);
     turn(EN_K3, 20);
@@ -312,6 +313,7 @@ static int drum_pages(void)
     song.sel = 3;
     t = &trk[3];
     stoch_defaults(&t->stoch);
+    t->stoch.on = 1;                                    /* (NOTES shows with STOCH on) */
     go_page(GR_STOCH);
     seq_next();
     ok = drum_track(t) && stoch_pg() == 1u && stoch_n() == 8u;

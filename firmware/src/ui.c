@@ -396,32 +396,17 @@ static int page_visible(uint32_t i)
 {
     if (PAGES[i].scope == SC_REVX)                    /* the ELEK reverb's pages: with REVERB TYPE ELEK */
         return song.g[G_RTYPE] == 3;
-    if (PAGES[i].own)                                 /* an engine's own pages (WAVETONE's INTERACT, UTIL, NOISE) */
-        return (uint32_t)(TSEL->eng_req % NENGINES) + 1u == PAGES[i].own;
-    if (PAGES[i].scope == SC_TRACK && PAGES[i].id[0] >= P_LN0 && PAGES[i].id[0] <= P_LN7)
-        return TSEL->eng_req % NENGINES == ENGI_DRUM;
-    if (PAGES[i].id[0] == P_FTYPE)                    /* FILTER (1.5, #104): ANALOG's, which is gone: never shown */
-        return 0;
-    if (PAGES[i].graph >= GR_FMOP && PAGES[i].graph <= GR_FMENV)
-        return TSEL->eng_req % NENGINES == ENGI_FM6;
-#if FELUCCA_SLICE
-    if (PAGES[i].graph == GR_SLICES)
-        return ENGINES[TSEL->eng_req % NENGINES] == &ENG_SLICE;
-#else
-    if (PAGES[i].graph == GR_SLICES)
-        return 0;
-#endif
-    if (PAGES[i].fam == FAM_EDIT && PAGES[i].id[0] >= P_FM1_ATK && PAGES[i].id[0] <= P_FM4_LEVEL) {
-        /* the operator slots' pages: DIGITAL's (OP1..4 ENV: GR_ADSR; OP LEVEL: from P_FM1_LEVEL) and FMTONE's (the rest) */
-        if (PAGES[i].graph == GR_ADSR || PAGES[i].id[0] == P_FM1_LEVEL)
-            return FELUCCA_FM4 && TSEL->eng_req % NENGINES == ENGI_DIGITAL;
-#if FELUCCA_FMTONE
-        return ENGINES[TSEL->eng_req % NENGINES] == &ENG_FMTONE;
-#else
-        return 0;
-#endif
+    if (PAGES[i].scope == SC_STOCH) {                 /* the mode's own pages: STOCH always (its MODE); NOTES SHAPE STACK with
+                                                       * STOCH on, EUCLID with EUCLID on (the generator's pages only) */
+        uint32_t first = 0, k;
+        for (k = 0; k < NPAGES; k++)
+            if (PAGES[k].scope == SC_STOCH) {
+                first = k;
+                break;
+            }
+        return i == first || (i == first + 4u ? TSEL->stoch.euc_on : TSEL->stoch.on);
     }
-    return 1;
+    return page_for_engine(i, TSEL->eng_req % NENGINES);   /* (params.c: the engine's pages) */
 }
 
 static uint32_t page_first(uint32_t fam)
@@ -654,7 +639,7 @@ static void note_del(track_t *t, uint32_t i, uint32_t k)   /* one note of a chor
     motion_clear_locks(t, i);
 }
 
-static uint32_t stoch_pg(void)                          /* 0..3: STOCH NOTES SHAPE STACK */
+static uint32_t stoch_pg(void)                          /* 0..4: STOCH NOTES SHAPE STACK EUCLID */
 {
     uint32_t i, first = 0;
     for (i = 0; i < NPAGES; i++)
@@ -1367,6 +1352,9 @@ static void apply_preset_to(track_t *t, uint32_t pi)
     swm_track_loaded(t);                              /* SWARM, CHIP, DUALVCO: the preset's filter (RES, KEY, TYPE, CUT) */
     chip_track_loaded(t);
     dual_track_loaded(t);
+#if FELUCCA_TR808
+    t8_track_loaded(t);                               /* TR808: the voices' levels */
+#endif
     load_end(t);
 }
 

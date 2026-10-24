@@ -305,6 +305,10 @@ if [ -f build/gen/felucca_tables.h ]; then
     run "full backup: CRC before writes, stale runtime, USB reset / timeout, malformed objects, older projects" "$OUT/backup_test"
     $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/six_test" tests/six_test.c -lm
     run "six tracks in the stored music: FUN10 + the FUNX extension (tracks 5 and 6, sections, events), old four-track projects, damaged extensions, autosave" "$OUT/six_test"
+    $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/stoch_test" tests/stoch_test.c -lm
+    run "STOCHASTIC mode: odds, loops, pages, the pattern kept, saved with the project" "$OUT/stoch_test"
+    $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/euclid_test" tests/euclid_test.c -lm
+    run "EUCLID mode: the rhythm E(PULSES, LEN) turned by ROT, its own loop, exclusive with STOCHASTIC, pages, stored bytes" "$OUT/euclid_test"
     $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/fm6bank_test" tests/fm6bank_test.c -lm
     run "FM6 voice bank (1.4.1): write / read, power cuts, CRC, SLOT B1..B32, stored SLOT values as before" "$OUT/fm6bank_test"
     $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/editor_test" tests/editor_test.c -lm
@@ -371,6 +375,8 @@ if [ -f build/gen/felucca_tables.h ]; then
     run "BRAIDS: pitch from C2 to C7 (the 44.1 kHz retiming), every model sounds and is bounded and deterministic, TIMB / COLR, BITS, RATE, SWP, the two sets of delay lines, engine switch, presets, level" "$OUT/braids_test"
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/tb303_test" tests/tb303_test.c -lm
     run "TB303: pitch, CUT and the filter slope, RES peak on the cutoff, ENVM / DEC, accent (level, brightness, the sweep), corners (bounded, no DC), determinism, presets, level" "$OUT/tb303_test"
+    $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/tr808_test" tests/tr808_test.c -lm
+    run "TR808: the 8W8 module's 16 voices in fixed point against its own renders (peak, levels, pitch), TUNE / DECY / velocity / LEVEL / DRV, the hats' choke, a hit on a ringing drum, ends, presets, the EDIT pages" "$OUT/tr808_test"
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/elek_rev_test" tests/elek_rev_test.c -lm
     run "ELEK REVERB: PRE, the reverb time (DEC, INF), the shelf (FRQ, GAIN), HPF / LPF, VOL, stereo, level against HALL, bounded, determinism" "$OUT/elek_rev_test"
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/delay_test" tests/delay_test.c -lm

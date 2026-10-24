@@ -190,6 +190,13 @@ static voice_t *voice_alloc(track_t *t, uint32_t note)
         if (v)
             return voice_reuse(t, v);
     }
+#if FELUCCA_TR808
+    if (t->engine == ENGI_TR808) {                      /* TR808: a note on a voice already ringing strikes that one */
+        voice_t *v = t8_reuse(t, note);
+        if (v)
+            return voice_reuse(t, v);
+    }
+#endif
     for (i = 0; i < np; i++) {
         if (t->v[i].active && t->v[i].note == note)
             return voice_reuse(t, &t->v[i]);
