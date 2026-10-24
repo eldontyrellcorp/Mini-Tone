@@ -2631,7 +2631,7 @@ static int test_page_cycles(void)
     }
     for (i = 0; i < NPAGES; i++)
         ok &= !str_eq(PAGES[i].title, "PATTERN") && !str_eq(PAGES[i].title, "CHANCE") && !str_eq(PAGES[i].title, "AUTO LIST");
-    bad += check("1.2: SEQ has STEP, AUTOMATION and the four STOCH pages only; SONG is GLO's only page, PHRASES SAVE's, MIXER and CLOCK HOME's "
+    bad += check("1.2: SEQ has STEP, AUTOMATION and the five STOCH pages only; SONG is GLO's only page, PHRASES SAVE's, MIXER and CLOCK HOME's "
                  "(their LED HOME)", ok);
     {   /* 1.2: GLOBAL and SYSTEM are gone; their knobs: BPM SWG CLK on HOME > CLOCK, TUNE and ROUT on no page (the MENU's),
          * MIDI SYNC CPU on none (INFO shows the USB state and the CPU) */
@@ -6401,7 +6401,7 @@ static int test_seq_tools(void)
     go_page(GR_ROLL); frame();
     press(B_SEQ); frames(320);
     ok = cur_page()->graph == GR_EVENTS && str_eq(cur_page()->title, "AUTOMATION") && msg_is("HOLD [SEQ] QUICK");
-    for (k = 0; k < 4u; k++) {                          /* STOCH NOTES SHAPE STACK */
+    for (k = 0; k < 5u; k++) {                          /* STOCH NOTES SHAPE STACK EUCLID */
         press(B_SEQ); frames(320);
         ok &= cur_page()->graph == GR_STOCH;
     }
@@ -6409,7 +6409,7 @@ static int test_seq_tools(void)
     ok &= cur_page()->graph == GR_ROLL;
     press(B_SEQ); frames(320);
     ok &= cur_page()->graph == GR_EVENTS;
-    bad += check("1.2: a tap on STEP: AUTOMATION, STOCH NOTES SHAPE STACK, then STEP again (the hint until the layer was opened)", ok);
+    bad += check("1.2: a tap on STEP: AUTOMATION, STOCH NOTES SHAPE STACK EUCLID, then STEP again (the hint until the layer was opened)", ok);
     go_title("ENV"); frame();
     press(B_SEQ); frames(320);
     ok = cur_page()->graph == GR_EVENTS;                /* (the SEQ page shown last) */

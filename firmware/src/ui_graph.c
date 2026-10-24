@@ -209,8 +209,8 @@ static void graph_roll(const track_t *t, uint16_t c)
     uint64_t locks = motion_lock_steps(trk_index(t));
     int32_t r, ybot = PR_Y0 + PR_ROWS * PR_RH, gw, cw = 192 / (int32_t)nv;
     char nb[8];
-    if (t->stoch.on)                                /* STOCHASTIC: the track draws its steps, these rest */
-        cv_text_on(2, 0, &AF_S, "STOCH", T_ACCENT, T_SURF);
+    if (GEN_ON(t))                                  /* STOCHASTIC / EUCLID: the track draws its steps, these rest */
+        cv_text_on(2, 0, &AF_S, t->stoch.on ? "STOCH" : "EUCLID", T_ACCENT, T_SURF);
     ncol = base < len ? (len - base < nv ? len - base : nv) : 0u;
     gw = (int32_t)ncol * cw + 1;
     for (r = 0; r < PR_ROWS; r++) {                 /* rows: the lane, the key, the C names */
@@ -278,14 +278,30 @@ static void graph_stoch(const track_t *t, uint16_t c)
     uint32_t pick = ui.stoch_k < n ? ui.stoch_k : 0u, drum = n == NLANE, lit = 0;
     int32_t pitch = 212 / (int32_t)n, bw = pitch - 3, x0 = 14, base = 98, hmax = 72;
     char b[16];
-    const stoch_t def = {0};
-    (void)def;
     if (song.playing && t->stoch.on) {                 /* the notes the step playing drew */
         const step_t *st = &t->stoch_step;
         for (k = 0; k < st->n && k < 4u; k++)
             lit |= 1u << (st->note[k] % 12u);
         if (drum)
             lit = st->hit;
+    }
+    if (stoch_pg() == 4u) {                            /* EUCLID: the rhythm as a row of steps, the hits filled, the one playing lit */
+        uint32_t n = g->euc_len ? g->euc_len : 16u, row = n > 32u ? 2u : 1u, per = (n + row - 1u) / row, i;
+        int32_t cw = 212 / (int32_t)per, r;
+        str_cpy(b, g->euc_on ? "EUCLID" : "OFF", 16);
+        cv_text_on(6, 0, &AF_S, b, g->euc_on ? T_ACCENT : T_DIM, T_SURF);
+        for (i = 0; i < n; i++) {
+            int32_t x = x0 + (int32_t)(i % per) * cw, y = 30 + (int32_t)(i / per) * 34;
+            uint32_t hit = g->euc_pulses && euclid_hit(g, i);
+            uint32_t now = song.playing && g->euc_on && (i + 1u) % n == t->euc_pos;
+            r = cw - 3;
+            cv_rect(x, y, r, 24, hit ? (g->euc_on ? c : T_MID) : T_RAISE);
+            if (now)
+                cv_frame(x - 1, y - 2, r + 2, 28, T_TEXT);
+            if (i % 4u == 0u)
+                cv_rect(x, y + 28, r, 2, T_DIM);
+        }
+        return;
     }
     if (!g->on)
         str_cpy(b, "OFF", 16);
@@ -1286,7 +1302,7 @@ static uint32_t graph_signature(void)
     if (pg->graph == GR_STOCH) {                     /* its settings, the pick, the step drawn now */
         h = fnv(h, &t->stoch, sizeof t->stoch);
         h = fnv(h, &t->stoch_step, sizeof t->stoch_step);
-        h ^= (ui.stoch_k + 1u) * 40009u + song.playing * 7u;
+        h ^= (ui.stoch_k + 1u) * 40009u + song.playing * 7u + t->euc_pos * 131u;
     }
     if (pg->graph == GR_REVX)                        /* the ELEK reverb's values */
         for (i = 0; i < RV_N; i++)
@@ -1317,7 +1333,7 @@ static uint32_t graph_signature(void)
         uint32_t ph = song.playing ? t->seq_idx : 0xFFFFu;
         if (ph < pr_base() || ph >= pr_base() + pr_nv())
             ph = 0xFFFFu;                            /* the roll shows the cursor's bank only */
-        h ^= t->stoch.on * 4001u;
+        h ^= (t->stoch.on + 2u * t->stoch.euc_on) * 4001u;
         h ^= ui.sheet * 977u + ui.note_k * 40009u + (uint32_t)(ui.zoom + 4) * 1301u;
         h ^= steps_hash(t) + ph * 31u + ui.cursor * 7919u + ui.lane * 104723u + ui.bank * 613u +
              drum_mute[trk_index(t) % NPART] * 2654435761u;

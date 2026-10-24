@@ -222,7 +222,7 @@ static void open_hold(void)                             /* OCT+ held 0.5 s */
 static void seq_next(void)                              /* SEQ tapped (slowly: two quick taps keep the layer) */
 {
     frames(1000);
-    seq_next();
+    press(B_SEQ);
     frames(100);
 }
 static int pages(void)

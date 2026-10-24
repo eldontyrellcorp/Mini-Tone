@@ -654,7 +654,7 @@ static void note_del(track_t *t, uint32_t i, uint32_t k)   /* one note of a chor
     motion_clear_locks(t, i);
 }
 
-static uint32_t stoch_pg(void)                          /* 0..3: STOCH NOTES SHAPE STACK */
+static uint32_t stoch_pg(void)                          /* 0..4: STOCH NOTES SHAPE STACK EUCLID */
 {
     uint32_t i, first = 0;
     for (i = 0; i < NPAGES; i++)

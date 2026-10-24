@@ -19,6 +19,8 @@ What changed since 1.0.1:
     or in the web editor
 - **STOCHASTIC mode** (after the OXI ONE's): a track generates its steps as they come, from odds you set, instead of playing its pattern
   (SEQ > STOCH, NOTES, SHAPE, STACK; see Controls). The pattern rests untouched, and LOCK writes what it draws into the pattern
+- **EUCLID mode** (after the Digitone 2's): a track plays an Euclidean rhythm E(PULSES, LEN) turned by ROT, in a loop of its own
+  (a polymeter against the pattern's LEN), instead of its pattern (SEQ > EUCLID, one layer; exclusive with STOCHASTIC)
 - **KNOB 1 on SEQ > STEP is the note's START**, a 64th of a step a detent and on into the next step (see Controls)
 
 ## Mini-Tone 1.0.1
@@ -158,6 +160,12 @@ it changes:
   - **SHAPE:** VEL MIN and VEL MAX (each velocity is drawn between them), RAT (the chance of a ratchet x2..x4), SLIDE (the chance a note
     slides into the next)
   - **STACK:** the chance of each extra note of a chord (up to two more), and the SEED of the loop
+- **EUCLID mode:** the fifth page after STOCH, NOTES, SHAPE and STACK. MODE on the STOCH page (KNOB 1) steps OFF / STOCH / EUCLID: one
+  at a time, the track's pattern rests untouched in both. With EUCLID the track plays the pattern's first note step (its notes,
+  velocity, accent, slide and ratchet; C4, or lane 1 on a DRUM track, if the pattern holds none) on each hit of the rhythm.
+  - **EUCLID:** LEN (KNOB 1, 1..64 steps: the rhythm's own loop, restarted when the song starts), PULSES (KNOB 2, 0..LEN: the hits, spread
+    as evenly as they can be), ROT (KNOB 3, 0..LEN-1: the rhythm turned that many steps later). The row of steps shows the hits and
+    the step playing
   - On a STOCH page **OCT+ tapped is REROLL** (another SEED; with LOOP FREE every pass is new anyway) and **OCT+ held (0.4 s) is LOCK**: the
     LEN steps it would draw are written into the pattern, MODE goes OFF, and you edit them as any pattern (one undo, SAVE held)
   - Settings are saved with the project (in its extension; projects saved before load with the mode OFF), not in user presets
