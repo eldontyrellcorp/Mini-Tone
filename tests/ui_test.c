@@ -6401,7 +6401,7 @@ static int test_seq_tools(void)
     go_page(GR_ROLL); frame();
     press(B_SEQ); frames(320);
     ok = cur_page()->graph == GR_EVENTS && str_eq(cur_page()->title, "AUTOMATION") && msg_is("HOLD [SEQ] QUICK");
-    for (k = 0; k < 5u; k++) {                          /* STOCH NOTES SHAPE STACK EUCLID */
+    for (k = 0; k < 1u; k++) {                          /* STOCH (MODE OFF: its other pages are hidden) */
         press(B_SEQ); frames(320);
         ok &= cur_page()->graph == GR_STOCH;
     }
@@ -6409,7 +6409,7 @@ static int test_seq_tools(void)
     ok &= cur_page()->graph == GR_ROLL;
     press(B_SEQ); frames(320);
     ok &= cur_page()->graph == GR_EVENTS;
-    bad += check("1.2: a tap on STEP: AUTOMATION, STOCH NOTES SHAPE STACK EUCLID, then STEP again (the hint until the layer was opened)", ok);
+    bad += check("1.2: a tap on STEP: AUTOMATION, STOCH (MODE OFF: only it), then STEP again (the hint until the layer was opened)", ok);
     go_title("ENV"); frame();
     press(B_SEQ); frames(320);
     ok = cur_page()->graph == GR_EVENTS;                /* (the SEQ page shown last) */

@@ -150,7 +150,7 @@ it changes:
   NUDGE, which plays with the track's QUANTIZE off) and, past the end of its step, on into the next one (its TIEs, chance, force,
   condition and locks with it) and so on, 64 detents a step, onto free steps only. The cursor moves with the PRESETS knob (and the
   grid's keys); on a step with no note KNOB 1 does nothing. KNOB 2 NOTE, KNOB 3 LEN, KNOB 4 FLAG as before. The drum grid keeps KNOB 1 as its cursor
-- **STOCHASTIC mode:** tap SEQ to go on from AUTOMATION to the four STOCH pages (STOCH, NOTES, SHAPE, STACK), for the selected track.
+- **STOCHASTIC mode:** tap SEQ to go on from AUTOMATION to the STOCH page and, with MODE on STOCH, its three others (NOTES, SHAPE, STACK), for the selected track.
   With MODE ON the track draws each step as it plays, from these settings; its pattern is not played and not changed. MODE OFF plays the pattern as before.
   - **STOCH:** MODE (KNOB 1, OFF / ON), DENS (the chance a step plays, 0..100 %), GROOVE (how much likelier the downbeats are than the
     offbeats), LOOP (FREE: a new draw every pass; 1..64: the same loop of that many steps every pass, for the same SEED)
@@ -160,7 +160,7 @@ it changes:
   - **SHAPE:** VEL MIN and VEL MAX (each velocity is drawn between them), RAT (the chance of a ratchet x2..x4), SLIDE (the chance a note
     slides into the next)
   - **STACK:** the chance of each extra note of a chord (up to two more), and the SEED of the loop
-- **EUCLID mode:** the fifth page after STOCH, NOTES, SHAPE and STACK. MODE on the STOCH page (KNOB 1) steps OFF / STOCH / EUCLID: one
+- **EUCLID mode:** the EUCLID page follows the STOCH page when MODE is EUCLID (NOTES, SHAPE and STACK are then hidden, as EUCLID is with the other modes). MODE on the STOCH page (KNOB 1) steps OFF / STOCH / EUCLID: one
   at a time, the track's pattern rests untouched in both. With EUCLID the track plays the pattern's first note step (its notes,
   velocity, accent, slide and ratchet; C4, or lane 1 on a DRUM track, if the pattern holds none) on each hit of the rhythm.
   - **EUCLID:** LEN (KNOB 1, 1..64 steps: the rhythm's own loop, restarted when the song starts), PULSES (KNOB 2, 0..LEN: the hits, spread

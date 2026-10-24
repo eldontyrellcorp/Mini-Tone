@@ -178,6 +178,48 @@ static int exclusive(void)
     return bad;
 }
 
+/* the pages of the mode only: OFF: STOCH; STOCH: STOCH NOTES SHAPE STACK; EUCLID: STOCH EUCLID (SEQ cycles through them) */
+static uint32_t cycle(uint32_t *seen)
+{
+    uint32_t i, n = 0, first = 0;
+    for (i = 0; i < NPAGES; i++)
+        if (PAGES[i].scope == SC_STOCH) {
+            first = i;
+            break;
+        }
+    for (i = 0; i < 5u; i++)
+        seen[i] = page_visible(first + i);
+    for (i = 0; i < 5u; i++)
+        n += seen[i];
+    return n;
+}
+static int visible(void)
+{
+    int bad = 0, ok;
+    uint32_t v[5];
+    track_t *t = base();
+    stoch_t *g = &t->stoch;
+    go_page(GR_STOCH);
+    ok = cycle(v) == 1u && v[0];
+    turn(EN_K1, 1);
+    ok &= cycle(v) == 4u && v[0] && v[1] && v[2] && v[3] && !v[4];
+    turn(EN_K1, 1);
+    ok &= cycle(v) == 2u && v[0] && !v[1] && !v[2] && !v[3] && v[4];
+    seq_next();
+    ok &= stoch_pg() == 4u;
+    seq_next();
+    ok &= cur_page()->graph == GR_ROLL;                 /* (back to STEP) */
+    bad += check("PAGES: OFF shows STOCH only, STOCH its four, EUCLID STOCH and EUCLID; SEQ cycles through them", ok);
+    go_page(GR_STOCH);
+    seq_next();
+    ok = stoch_pg() == 4u;
+    g->euc_on = 0; g->on = 1;
+    frames(300);
+    ok &= stoch_pg() == 0u || cur_page()->graph == GR_ROLL;
+    bad += check("  a page of the other mode (the track changed) is left for a visible one", ok);
+    return bad;
+}
+
 static int pages(void)
 {
     int bad = 0, ok;
@@ -185,8 +227,8 @@ static int pages(void)
     stoch_t *g = &t->stoch;
     uint32_t i;
     go_page(GR_STOCH);
-    for (i = 0; i < 4u; i++)
-        seq_next();
+    turn(EN_K1, 1); turn(EN_K1, 1);                      /* EUCLID: its page follows the STOCH one */
+    seq_next();
     ok = stoch_pg() == 4u && g->euc_len == 16u && g->euc_pulses == 4u && g->euc_rot == 0u;
     turn(EN_K1, 1);
     ok &= g->euc_len == 17u;
@@ -235,7 +277,7 @@ static int stored(void)
 
 int main(void)
 {
-    int bad = rhythm() + exclusive() + pages() + play() + stored();
+    int bad = rhythm() + visible() + exclusive() + pages() + play() + stored();
     printf("%s\n", bad ? "EUCLID TEST FAILED" : "euclid tests passed");
     return bad != 0;
 }

@@ -398,6 +398,16 @@ static int page_visible(uint32_t i)
         return song.g[G_RTYPE] == 3;
     if (PAGES[i].own)                                 /* an engine's own pages (WAVETONE's INTERACT, UTIL, NOISE) */
         return (uint32_t)(TSEL->eng_req % NENGINES) + 1u == PAGES[i].own;
+    if (PAGES[i].scope == SC_STOCH) {                 /* the mode's own pages: STOCH always (its MODE); NOTES SHAPE STACK with
+                                                       * STOCH on, EUCLID with EUCLID on (the generator's pages only) */
+        uint32_t first = 0, k;
+        for (k = 0; k < NPAGES; k++)
+            if (PAGES[k].scope == SC_STOCH) {
+                first = k;
+                break;
+            }
+        return i == first || (i == first + 4u ? TSEL->stoch.euc_on : TSEL->stoch.on);
+    }
     if (PAGES[i].scope == SC_TRACK && PAGES[i].id[0] >= P_LN0 && PAGES[i].id[0] <= P_LN7)
         return TSEL->eng_req % NENGINES == ENGI_DRUM;
     if (PAGES[i].id[0] == P_FTYPE)                    /* FILTER (1.5, #104): ANALOG's, which is gone: never shown */

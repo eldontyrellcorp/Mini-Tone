@@ -1518,7 +1518,7 @@ static void ui_draw_page(uint32_t counting)
     }
     if (!ui.home && !page_visible(ui.page)) {          /* an OP page of a track that is not DIGITAL (without
                                                          * FELUCCA_FM4: any track): EDIT 1 */
-        ui.page = (uint8_t)page_first(FAM_EDIT);
+        ui.page = (uint8_t)page_first(cur_page()->fam == FAM_SEQ ? FAM_SEQ : FAM_EDIT);   /* (a STOCH / EUCLID page of the other mode: SEQ's first) */
         page_entered();
     }
     cursor_fix();

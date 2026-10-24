@@ -245,6 +245,7 @@ static int pages(void)
     ok &= g->loop == 3u;
     turn(EN_K1, -1);
     ok &= g->on == 0u;
+    turn(EN_K1, 1);                                     /* (the other pages show with STOCH on only) */
     bad += check("PAGES: STOCH: MODE ON / OFF, DENS, GROOVE, LOOP on KNOB 1..4", ok);
     seq_next();
     ok = stoch_pg() == 1u;
@@ -312,6 +313,7 @@ static int drum_pages(void)
     song.sel = 3;
     t = &trk[3];
     stoch_defaults(&t->stoch);
+    t->stoch.on = 1;                                    /* (NOTES shows with STOCH on) */
     go_page(GR_STOCH);
     seq_next();
     ok = drum_track(t) && stoch_pg() == 1u && stoch_n() == 8u;
