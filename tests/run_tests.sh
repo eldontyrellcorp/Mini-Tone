@@ -305,6 +305,8 @@ if [ -f build/gen/felucca_tables.h ]; then
     run "full backup: CRC before writes, stale runtime, USB reset / timeout, malformed objects, older projects" "$OUT/backup_test"
     $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/six_test" tests/six_test.c -lm
     run "six tracks in the stored music: FUN10 + the FUNX extension (tracks 5 and 6, sections, events), old four-track projects, damaged extensions, autosave" "$OUT/six_test"
+    $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/stoch_test" tests/stoch_test.c -lm
+    run "STOCHASTIC mode: odds, loops, pages, the pattern kept, saved with the project" "$OUT/stoch_test"
     $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/euclid_test" tests/euclid_test.c -lm
     run "EUCLID mode: the rhythm E(PULSES, LEN) turned by ROT, its own loop, exclusive with STOCHASTIC, pages, stored bytes" "$OUT/euclid_test"
     $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/fm6bank_test" tests/fm6bank_test.c -lm

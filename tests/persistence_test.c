@@ -250,7 +250,7 @@ static void as_power_on(void)                            /* RAM lost: the defaul
 static void as_edit(uint32_t i)                          /* a change a project holds: step i's note (always another) */
 {
     static uint32_t n;
-    track_t *t = &trk[i % NTRK];
+    track_t *t = &trk[i % NPROJ];
     step_t *s = &t->step[i % 16u];
     s->time = ST_NOTE;
     s->n = 1;
@@ -613,7 +613,7 @@ int main(void)
         v5.size = sizeof v5;
         for (i = 0; i < G_COUNT; i++)
             v5.g[i] = GP[i].def;
-        for (i = 0; i < NTRK; i++) {
+        for (i = 0; i < NPROJ; i++) {                              /* (FUN5: four tracks) */
             v5.t[i].engine = trk[i].engine;
             memcpy(v5.t[i].p, trk[i].p, sizeof v5.t[i].p);
         }
@@ -630,7 +630,8 @@ int main(void)
         for (i = 0; i < P_COUNT; i++) {
             uint32_t e;
             for (e = 0; e < NENGINES; e++)
-                if (param_desc_of(e, i)->min < -64 || param_desc_of(e, i)->max > 127) {
+                if (ENGINES[e] != &ENG_GONE &&                      /* (a removed engine keeps its values as they were: any byte) */
+                    (param_desc_of(e, i)->min < -64 || param_desc_of(e, i)->max > 127)) {
                     printf("param %u engine %u: range %d..%d does not fit FUN7's byte\n", i, e,
                            param_desc_of(e, i)->min, param_desc_of(e, i)->max);
                     bad++;

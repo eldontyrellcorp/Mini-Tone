@@ -96,5 +96,5 @@ dig_RenderTwinPeaksNoise 66
 dig_RenderClockedNoise 44
 dig_RenderGranularCloud 133
 dig_RenderParticleNoise 230
-dig_RenderDigitalModulation 63
+dig_RenderDigitalModulation 75
 dig_RenderQuestionMark 101

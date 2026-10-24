@@ -264,7 +264,7 @@ static int pages(void)
     ok = stoch_pg() == 2u;
     turn(EN_K1, -100);
     ok &= g->vmin == 1u;
-    turn(EN_K2, -100);
+    turn(EN_K2, -200);                                  /* (VMAX 110 -> down to VMIN) */
     ok &= g->vmax == g->vmin;
     turn(EN_K2, 200);
     turn(EN_K3, 20);

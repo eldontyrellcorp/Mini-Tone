@@ -4663,6 +4663,33 @@ static int test_bughunt_ui2(void)
     return bad;
 }
 
+/* a project as FUN10 carries it: tracks 1..4 (NPROJ), their sections' slots and events. Tracks 5 and 6 and the stochastic
+ * settings are the extension's (FUNZ: project.c projx_pack), so a FUN10 alone brings them back as at power-on: equal them,
+ * then compare every other byte */
+static int proj_same(const project_t *a, const project_t *b)
+{
+    project_t y = *b;
+    uint32_t i, r;
+    for (i = NPROJ; i < NTRK; i++) {
+        y.t[i] = a->t[i];
+        memcpy(y.fm6[i], a->fm6[i], FM6_PACKED);
+        for (r = 0; r < CHAIN_ROWS; r++)
+            y.chain.row[r].slot[i] = a->chain.row[r].slot[i];
+    }
+    memcpy(y.stoch, a->stoch, sizeof y.stoch);
+    y.xlink = a->xlink;                                 /* (the extension's id) */
+    y.sum = a->sum;                                     /* (it covers all of the above) */
+    if (memcmp(a, &y, sizeof y)) {                      /* (the first byte that differs, to find it) */
+        for (i = 0; ((const uint8_t *)a)[i] == ((const uint8_t *)&y)[i]; i++)
+            ;
+        printf("  proj_same: byte %u differs (t %u, xlink %u, chain %u, motion %u, fm6 %u, name %u)\n", i,
+               (unsigned)offsetof(project_t, t), (unsigned)offsetof(project_t, xlink), (unsigned)offsetof(project_t, chain),
+               (unsigned)offsetof(project_t, motion), (unsigned)offsetof(project_t, fm6), (unsigned)offsetof(project_t, name));
+        return 0;
+    }
+    return 1;
+}
+
 #ifndef UI_TEST_NO_MAIN
 /* L is a sparse face (tools/gen_aa_font.py L_CHARS): every string drawn in it has all its glyphs */
 static int test_large_face(void)
