@@ -13,14 +13,15 @@ of them is *selected* (ALGORITHM on the device, or `TRACK`). Every v1 / v2 comma
 selected track (its parameters, engine, preset, steps, the user presets it stores or loads); `TRACK`,
 `TRACK_MIX`, `TRACK_DUMP` and `TRACK_STEP` reach any track. Command numbers 1-26 are unchanged.
 
-**Mini-Tone (this fork, P_COUNT 111, P_E0 103, G_COUNT 27; INFO `NTRK` 6, engines 24):** nothing in a command changed; the tables did, and
+**Mini-Tone (this fork, P_COUNT 111, P_E0 103, G_COUNT 27; INFO `NTRK` 6, engines 25):** nothing in a command changed; the tables did, and
 `web/test_web.mjs` checks the editor's mock device and layout against the firmware's own (`tests/descdump.c` -> `build/host/desc.json`;
 `node web/sync_mock.mjs` rewrites the mock's engines and the editor's `ENGINE_PAGES` from it):
 - **Six tracks** (`TRACK`, `TRACK_DUMP`, `TRACK_MIX`, `TRACK_STEP`, `TRACK_PARAM`, `MOTION` take 0..5). Songs: a row of ops 0..3 puts
   all six tracks on its slot; ops 4..7 (INFO `57 01 06`) carry a slot per track (6 bytes, then the repeat). MIDI IN `ROUT` (global 14): CH1-6, SEL, CH5-10, CH9-14, CH13-16.
-- **Engines:** 24 numbers. 0 ANALOG, 2..9 PHASE .. PHYS, 11 NOISE and 13 SLICE are removed (`"-"` in INFO, no presets; a project that
+- **Engines:** 25 numbers. 0 ANALOG, 2..9 PHASE .. PHYS, 11 NOISE and 13 SLICE are removed (`"-"` in INFO, no presets; a project that
   names one loads with its values as they were and plays silence); 1 is DIGITAL's retired slot (its sounds load as FM6). Live: 10 DRUM,
-  12 FM6, 14 SWARM, 15 FMTONE, 16 WAVETONE, 17 FMDRUM, then 18 SID, 19 CHIP, 20 DUALVCO, 21 ANALOG4, 22 BRAIDS, 23 TB303. The `ENG` list
+  12 FM6, 14 SWARM, 15 FMTONE, 16 WAVETONE, 17 FMDRUM, then 18 SID, 19 CHIP, 20 DUALVCO, 21 ANALOG4, 22 BRAIDS, 23 TB303, 24 TR808 (25 numbers;
+  its operator slots 0..15 are the 16 voices' levels). `DESC` names an enum up to 32 values (24 before). The `ENG` list
   (global 20) has a name for every number (a removed one keeps its old name, SLICE is `"-"`), so its value is the engine number.
 - **Track parameters 91..102** (before the engine's): `SYNC` `TRIG` `POL` (LFO 2), `QNTZ` (QUANTIZE), `SPRD` (SPREAD), `INSRT` `INS A` `INS B`
   `INS C` `MIX` (the track's INSERT), `TYPE` (the resonant filter's: LP BP HP) and `ESYNC` (ENV times as note values).

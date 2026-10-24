@@ -46,7 +46,7 @@ it changes:
   (flash 0xA0000..0xA9FFF); a project saved by Felucca loads with them at their power-on sound
 - **New engines**: SID (MOS 6581 / 8580, after reSID), CHIP (Elektron's SY CHIP), DUALVCO (Elektron's SY DUAL VCO), ANALOG4 (Elektron's Analog
   Four), BRAIDS (Mutable Instruments' Braids: its 48 models), SWARMER (Digitone 2), FMTONE (Digitone 2), WAVETONE (Digitone 2), FMDRUM (Digitone 2) 
-  and TB303 (Roland's TB-303); the engines ANALOG, PHASE, LOFI, SAMPLE, VOICE, TRIO, WHEEL, GRAIN, PHYS, NOISE and SLICE (and the user sample slots) are removed
+  TB303 (Roland's TB-303) and TR808 (the TR-808 of the 8W8 module: 16 voices); the engines ANALOG, PHASE, LOFI, SAMPLE, VOICE, TRIO, WHEEL, GRAIN, PHYS, NOISE and SLICE (and the user sample slots) are removed
 - **A ping-pong stereo delay** (MENU > AUDIO > PING PONG, DLY HALF: the line at half the sample rate for twice the time)
   with a **TIME** of 16 note values (4BAR to 1/32, triplets, and the dotted 1/1D 1/2D 1/4D 1/8D 1/16D 1/32D) and then **1 to 1486 ms** off the
   grid (the tempo does not move them); the time glides to a new TIME (8 samples a block, a tape's glide) instead of clicking
@@ -355,6 +355,17 @@ loads with its values and plays silence):
   envelope), ACNT (the accent: louder, a deeper envelope, and the accent sweep that builds over accented notes), DRV and the
   square's width PW. The sequencer's SLIDE and ACCENT do the rest: a slide glides without a new envelope (MONO, as the presets
   are), an accented step is played at velocity 127. One voice a track
+- **TR808**: a TR-808 of 16 voices after the circuit models of the 8W8 module for Ableton Move (<https://github.com/athousanddetails/schwung-8W8>,
+  GPL-3.0), rewritten in fixed point: the bass drum (a bridged-T resonator in an op-amp loop: DECY is its loop gain, with the pitch sigh and the
+  attack-time jump), the snare (two shells at 173 and 336 Hz and a noise path through a swing-type VCA), the three toms and three congas
+  (the same resonator, struck two ways), the rim shot and the claves, the maracas, the hand clap (three bursts and a tail), the cowbell, the
+  closed and the open hat and the cymbal (one bank of six Schmitt oscillators, shared, through each voice's own filters and gate). General MIDI
+  notes (35..81) strike the voices; a hit on a drum still ringing adds to it, as on the machine. `tests/tr808_test.c` renders every voice
+  and compares it with the 8W8's own render of it (peak, level, pitch). Not in it: 8W8's reverb, delay, compressor and per-voice distortions
+  (the track's sends, DIST and INSERT do those). **EDIT 1** TUNE (all voices, +-2 semitones for the toms and congas, +-12 for the others;
+  64 is the machine's), DECY (each voice's own decay pot moved together), BTON and BATK (the kick's tone and attack), **EDIT 2** SNAP (the
+  snare's snappy), DRV (a soft clip), VEL (how far velocity moves the level), CHOK (OFF, CH>OH, BOTH: the hats are one hat), **LEVELS 1..4**
+  the 16 levels (BD SD LT MT, HT LC MC HC, RS CL MA CP, CB CH OH CY). Five kits: 808 KIT, BOOM KIT, TIGHT KIT, DIRTY KIT, METAL KIT
 - **DRUM**: an 8-lane kit of Felucca's own drum voices on the General MIDI key map. KIT picks the
   standard kit or one of five virtual-analog (VA) kits in the manner of
   classic analog drum machines (the numbers are a hint), every lane its own voice: **80** (deep sine kick with a long decay, noisy snare,
