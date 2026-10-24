@@ -3,6 +3,23 @@
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-blue.svg)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/Sponsor-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/hugelton)
 
+## Mini-Tone 1.0.3
+
+What changed since 1.0.2:
+
+- **A new TR808 engine**: a TR-808 of 16 voices (bass drum, snare, three toms and three congas, rim shot, claves, maracas, clap, cowbell,
+  closed and open hats, cymbal), the circuit models of the 8W8 module for Ableton Move (GPL-3.0) rewritten in fixed point and checked against
+  its own renders (Engines, below). General MIDI notes strike the voices, a hit on a ringing drum adds to it, and a closed hat cuts the open one
+- **EUCLID mode** (after the Digitone 2's): a track plays an Euclidean rhythm E(PULSES, LEN) turned by ROT, in a loop of its own
+  (a polymeter against the pattern's LEN), instead of its pattern (SEQ > EUCLID, one layer; exclusive with STOCHASTIC)
+- **SEQ shows the pages of the track's generator mode only**: OFF the STOCH page (its MODE), STOCHASTIC its four, EUCLID STOCH and EUCLID
+- **The web editor follows the firmware again**: six tracks, the 25 engine numbers, the 111-parameter layout (LFO 2, the INSERT, SPREAD,
+  QUANTIZE, ENV SYNC), each engine's own EDIT pages, the delay TIME as the device shows it; `web/sync_mock.mjs` regenerates its tables from the
+  firmware (`tests/descdump.c`) so they cannot drift. The editor protocol names enums up to 32 values (24 before, the engine list has 25)
+- **Fixes**: the engine list (MENU / the editor) had no name for SLICE's number, so every engine after it was shifted by one name and TB303 could
+  not be picked from it; the host tests for the old four-track formats, the removed engines and STOCHASTIC mode run again (the suite fails only
+  on one BRAIDS hash that depends on the host's libm)
+
 ## Mini-Tone 1.0.2
 
 What changed since 1.0.1:
@@ -19,8 +36,6 @@ What changed since 1.0.1:
     or in the web editor
 - **STOCHASTIC mode** (after the OXI ONE's): a track generates its steps as they come, from odds you set, instead of playing its pattern
   (SEQ > STOCH, NOTES, SHAPE, STACK; see Controls). The pattern rests untouched, and LOCK writes what it draws into the pattern
-- **EUCLID mode** (after the Digitone 2's): a track plays an Euclidean rhythm E(PULSES, LEN) turned by ROT, in a loop of its own
-  (a polymeter against the pattern's LEN), instead of its pattern (SEQ > EUCLID, one layer; exclusive with STOCHASTIC)
 - **KNOB 1 on SEQ > STEP is the note's START**, a 64th of a step a detent and on into the next step (see Controls)
 
 ## Mini-Tone 1.0.1
@@ -46,7 +61,7 @@ it changes:
   (flash 0xA0000..0xA9FFF); a project saved by Felucca loads with them at their power-on sound
 - **New engines**: SID (MOS 6581 / 8580, after reSID), CHIP (Elektron's SY CHIP), DUALVCO (Elektron's SY DUAL VCO), ANALOG4 (Elektron's Analog
   Four), BRAIDS (Mutable Instruments' Braids: its 48 models), SWARMER (Digitone 2), FMTONE (Digitone 2), WAVETONE (Digitone 2), FMDRUM (Digitone 2) 
-  TB303 (Roland's TB-303) and TR808 (the TR-808 of the 8W8 module: 16 voices); the engines ANALOG, PHASE, LOFI, SAMPLE, VOICE, TRIO, WHEEL, GRAIN, PHYS, NOISE and SLICE (and the user sample slots) are removed
+  and TB303 (Roland's TB-303); the engines ANALOG, PHASE, LOFI, SAMPLE, VOICE, TRIO, WHEEL, GRAIN, PHYS, NOISE and SLICE (and the user sample slots) are removed
 - **A ping-pong stereo delay** (MENU > AUDIO > PING PONG, DLY HALF: the line at half the sample rate for twice the time)
   with a **TIME** of 16 note values (4BAR to 1/32, triplets, and the dotted 1/1D 1/2D 1/4D 1/8D 1/16D 1/32D) and then **1 to 1486 ms** off the
   grid (the tempo does not move them); the time glides to a new TIME (8 samples a block, a tape's glide) instead of clicking
