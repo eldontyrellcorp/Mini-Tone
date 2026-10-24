@@ -7,11 +7,31 @@ flash writes and live pushes (16-26, 32) have host coverage; that does not estab
 their hardware behavior. The step chance byte, motion (64) and the full backup (65-67) have host
 coverage only (`tests/editor_test.c`, `tests/backup_test.c`, `web/test_backup.mjs`).
 
-**v3 (four tracks):** the device has four tracks, each a synth part (since 1.0; before it, track 4
+**v3 (tracks):** the device has `NTRK` tracks (INFO tells: four up to Mini-Tone 1.0.1, six since), each a synth part (since 1.0; before it, track 4
 was a GM drum track: see "Track 4 since 1.0" below). One
 of them is *selected* (ALGORITHM on the device, or `TRACK`). Every v1 / v2 command acts on the
 selected track (its parameters, engine, preset, steps, the user presets it stores or loads); `TRACK`,
 `TRACK_MIX`, `TRACK_DUMP` and `TRACK_STEP` reach any track. Command numbers 1-26 are unchanged.
+
+**Mini-Tone (this fork, P_COUNT 111, P_E0 103, G_COUNT 27; INFO `NTRK` 6, engines 24):** nothing in a command changed; the tables did, and
+`web/test_web.mjs` checks the editor's mock device and layout against the firmware's own (`tests/descdump.c` -> `build/host/desc.json`;
+`node web/sync_mock.mjs` rewrites the mock's engines and the editor's `ENGINE_PAGES` from it):
+- **Six tracks** (`TRACK`, `TRACK_DUMP`, `TRACK_MIX`, `TRACK_STEP`, `TRACK_PARAM`, `MOTION` take 0..5). Songs: a row of ops 0..3 puts
+  all six tracks on its slot; ops 4..7 (INFO `57 01 06`) carry a slot per track (6 bytes, then the repeat). MIDI IN `ROUT` (global 14): CH1-6, SEL, CH5-10, CH9-14, CH13-16.
+- **Engines:** 24 numbers. 0 ANALOG, 2..9 PHASE .. PHYS, 11 NOISE and 13 SLICE are removed (`"-"` in INFO, no presets; a project that
+  names one loads with its values as they were and plays silence); 1 is DIGITAL's retired slot (its sounds load as FM6). Live: 10 DRUM,
+  12 FM6, 14 SWARM, 15 FMTONE, 16 WAVETONE, 17 FMDRUM, then 18 SID, 19 CHIP, 20 DUALVCO, 21 ANALOG4, 22 BRAIDS, 23 TB303. The `ENG` list
+  (global 20) has a name for every number (a removed one keeps its old name, SLICE is `"-"`), so its value is the engine number.
+- **Track parameters 91..102** (before the engine's): `SYNC` `TRIG` `POL` (LFO 2), `QNTZ` (QUANTIZE), `SPRD` (SPREAD), `INSRT` `INS A` `INS B`
+  `INS C` `MIX` (the track's INSERT), `TYPE` (the resonant filter's: LP BP HP) and `ESYNC` (ENV times as note values).
+- **Operator slots (61..80)** are named by the engine (FMTONE, WAVETONE, FMDRUM, ANALOG4, SWARM, CHIP, DUALVCO use them): `DESC` and
+  `TRACK_PARAM` answer with that engine's label, range and names (`engine_t tdesc`). The EDIT pages each engine shows are in
+  `ENGINE_PAGES` (the device's `PAGES` with the engine's own: `params.c page_for_engine`).
+- **Reverb TYPE** (global 24) has a fourth value, ELEK. **Delay TIME** (global 4) is `F_DTIME` (fmt 15, 0..1501): 0..9 the note values of the
+  DIV list, 10..15 the dotted ones, from 16 milliseconds (value - 15 ms); a knob and the editor's slider go longest first through the 16
+  note values, then up through the milliseconds.
+- STOCHASTIC and EUCLID (SEQ pages) are not in the protocol: their settings are saved with the project (the FUNZ extension) but have no
+  parameter ids yet.
 
 **v4 (any track's parameters):** `TRACK_PARAM` gets or sets a parameter of any track without changing
 the selection, and the `TRACK_CHANGED` push follows level, pan and mute of the tracks that are not

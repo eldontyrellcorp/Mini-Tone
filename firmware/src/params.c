@@ -77,6 +77,8 @@ static const char *const N_ENGNAME[] = {"ANALOG", FELUCCA_FM4 ? "DIGITAL" : "-",
                                              "DRUM", "NOISE", "FM6",
 #if FELUCCA_SLICE
                                              "SLICE",
+#else
+                                             "-",                      /* (a name for every engine number: ENGINES[] keeps 13 either way) */
 #endif
 #if FELUCCA_SWARM
                                              "SWARM",
@@ -632,6 +634,37 @@ static const page_t PAGES[] = {
     {"CLOCK", FAM_TRK, SC_GLOBAL, GR_NONE, {G_BPM, G_SWING, G_CLOCK, 0xFF}},
 };
 #define NPAGES (sizeof(PAGES) / sizeof(PAGES[0]))
+/* does engine e show page i? (ui.c page_visible adds the REVERB TYPE and STOCH rules; tests/descdump.c lists the EDIT family's
+ * per engine, for the editor's EDIT pages) */
+static int page_for_engine(uint32_t i, uint32_t e)
+{
+    if (PAGES[i].own)                                 /* an engine's own pages (WAVETONE's INTERACT, UTIL, NOISE) */
+        return e + 1u == PAGES[i].own;
+    if (PAGES[i].scope == SC_TRACK && PAGES[i].id[0] >= P_LN0 && PAGES[i].id[0] <= P_LN7)
+        return e == ENGI_DRUM;
+    if (PAGES[i].id[0] == P_FTYPE)                    /* FILTER (1.5, #104): ANALOG's, which is gone: never shown */
+        return 0;
+    if (PAGES[i].graph >= GR_FMOP && PAGES[i].graph <= GR_FMENV)
+        return e == ENGI_FM6;
+#if FELUCCA_SLICE
+    if (PAGES[i].graph == GR_SLICES)
+        return ENGINES[e] == &ENG_SLICE;
+#else
+    if (PAGES[i].graph == GR_SLICES)
+        return 0;
+#endif
+    if (PAGES[i].fam == FAM_EDIT && PAGES[i].id[0] >= P_FM1_ATK && PAGES[i].id[0] <= P_FM4_LEVEL) {
+        /* the operator slots' pages: DIGITAL's (OP1..4 ENV: GR_ADSR; OP LEVEL: from P_FM1_LEVEL) and FMTONE's (the rest) */
+        if (PAGES[i].graph == GR_ADSR || PAGES[i].id[0] == P_FM1_LEVEL)
+            return FELUCCA_FM4 && e == ENGI_DIGITAL;
+#if FELUCCA_FMTONE
+        return ENGINES[e] == &ENG_FMTONE;
+#else
+        return 0;
+#endif
+    }
+    return 1;
+}
 static uint8_t mod_ui_slot;      /* the MOD page: the matrix slot (0..3) KNOB 2..4 edit */
 
 static const param_desc_t *page_desc(const page_t *pg, uint32_t slot, int16_t **valp)

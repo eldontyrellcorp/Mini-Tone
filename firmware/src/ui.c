@@ -396,8 +396,6 @@ static int page_visible(uint32_t i)
 {
     if (PAGES[i].scope == SC_REVX)                    /* the ELEK reverb's pages: with REVERB TYPE ELEK */
         return song.g[G_RTYPE] == 3;
-    if (PAGES[i].own)                                 /* an engine's own pages (WAVETONE's INTERACT, UTIL, NOISE) */
-        return (uint32_t)(TSEL->eng_req % NENGINES) + 1u == PAGES[i].own;
     if (PAGES[i].scope == SC_STOCH) {                 /* the mode's own pages: STOCH always (its MODE); NOTES SHAPE STACK with
                                                        * STOCH on, EUCLID with EUCLID on (the generator's pages only) */
         uint32_t first = 0, k;
@@ -408,30 +406,7 @@ static int page_visible(uint32_t i)
             }
         return i == first || (i == first + 4u ? TSEL->stoch.euc_on : TSEL->stoch.on);
     }
-    if (PAGES[i].scope == SC_TRACK && PAGES[i].id[0] >= P_LN0 && PAGES[i].id[0] <= P_LN7)
-        return TSEL->eng_req % NENGINES == ENGI_DRUM;
-    if (PAGES[i].id[0] == P_FTYPE)                    /* FILTER (1.5, #104): ANALOG's, which is gone: never shown */
-        return 0;
-    if (PAGES[i].graph >= GR_FMOP && PAGES[i].graph <= GR_FMENV)
-        return TSEL->eng_req % NENGINES == ENGI_FM6;
-#if FELUCCA_SLICE
-    if (PAGES[i].graph == GR_SLICES)
-        return ENGINES[TSEL->eng_req % NENGINES] == &ENG_SLICE;
-#else
-    if (PAGES[i].graph == GR_SLICES)
-        return 0;
-#endif
-    if (PAGES[i].fam == FAM_EDIT && PAGES[i].id[0] >= P_FM1_ATK && PAGES[i].id[0] <= P_FM4_LEVEL) {
-        /* the operator slots' pages: DIGITAL's (OP1..4 ENV: GR_ADSR; OP LEVEL: from P_FM1_LEVEL) and FMTONE's (the rest) */
-        if (PAGES[i].graph == GR_ADSR || PAGES[i].id[0] == P_FM1_LEVEL)
-            return FELUCCA_FM4 && TSEL->eng_req % NENGINES == ENGI_DIGITAL;
-#if FELUCCA_FMTONE
-        return ENGINES[TSEL->eng_req % NENGINES] == &ENG_FMTONE;
-#else
-        return 0;
-#endif
-    }
-    return 1;
+    return page_for_engine(i, TSEL->eng_req % NENGINES);   /* (params.c: the engine's pages) */
 }
 
 static uint32_t page_first(uint32_t fam)
