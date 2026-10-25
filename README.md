@@ -17,8 +17,6 @@ What changed since 1.0.3:
   MODULATES OSC 1 / PHASES RUN ON". The letters are the waves (S sine, K bent sine, T triangle, Z sine/saw, A saw), then the mode (`+` mix,
   `R` ring, `FM`, `F+R` FM then ring modulated by oscillator 2), and a `*` first means the phases restart at each note. The text is built
   from the CNFG number, so it costs next to no flash
-- Tests: `tests/euclid_test.c` covers the four operators, the polymeter, the EUCLID 2 knobs and the saved bytes; the suite still fails only on
-  the one BRAIDS hash that depends on the host's libm
 
 ## Mini-Tone 1.0.3
 
