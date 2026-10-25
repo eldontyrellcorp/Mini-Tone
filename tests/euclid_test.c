@@ -187,26 +187,28 @@ static uint32_t cycle(uint32_t *seen)
             first = i;
             break;
         }
-    for (i = 0; i < 5u; i++)
+    for (i = 0; i < 6u; i++)
         seen[i] = page_visible(first + i);
-    for (i = 0; i < 5u; i++)
+    for (i = 0; i < 6u; i++)
         n += seen[i];
     return n;
 }
 static int visible(void)
 {
     int bad = 0, ok;
-    uint32_t v[5];
+    uint32_t v[6];
     track_t *t = base();
     stoch_t *g = &t->stoch;
     go_page(GR_STOCH);
     ok = cycle(v) == 1u && v[0];
     turn(EN_K1, 1);
-    ok &= cycle(v) == 4u && v[0] && v[1] && v[2] && v[3] && !v[4];
+    ok &= cycle(v) == 4u && v[0] && v[1] && v[2] && v[3] && !v[4] && !v[5];
     turn(EN_K1, 1);
-    ok &= cycle(v) == 2u && v[0] && !v[1] && !v[2] && !v[3] && v[4];
+    ok &= cycle(v) == 3u && v[0] && !v[1] && !v[2] && !v[3] && v[4] && v[5];
     seq_next();
     ok &= stoch_pg() == 4u;
+    seq_next();
+    ok &= stoch_pg() == 5u;
     seq_next();
     ok &= cur_page()->graph == GR_ROLL;                 /* (back to STEP) */
     bad += check("PAGES: OFF shows STOCH only, STOCH its four, EUCLID STOCH and EUCLID; SEQ cycles through them", ok);
@@ -275,9 +277,86 @@ static int stored(void)
     return bad;
 }
 
+static void mix_str(const stoch_t *g, uint32_t n, char *o)
+{
+    uint32_t i;
+    for (i = 0; i < n; i++)
+        o[i] = euclid_mix(g, i, i) ? 'x' : '.';
+    o[i] = 0;
+}
+
+static int layers(void)
+{
+    int bad = 0, ok;
+    track_t *t = base();
+    stoch_t *g = &t->stoch, h;
+    char s[80];
+    uint32_t i, n;
+    stoch_defaults(&h);
+    euclid_defaults(&h);
+    h.euc_len = 8; h.euc_pulses = 3;                     /* A: x..x..x. */
+    h.euc2_len = 128u | 8u; h.euc2_pulses = 2;           /* B: x...x... */
+    h.euc2_ro = EUC_AND << 6;
+    mix_str(&h, 8, s);
+    ok = !strcmp(s, "x.......");
+    h.euc2_ro = EUC_OR << 6;
+    mix_str(&h, 8, s);
+    ok &= !strcmp(s, "x..xx.x.");
+    h.euc2_ro = EUC_XOR << 6;
+    mix_str(&h, 8, s);
+    ok &= !strcmp(s, "...xx.x.");
+    h.euc2_ro = EUC_SUB << 6;
+    mix_str(&h, 8, s);
+    ok &= !strcmp(s, "...x..x.");
+    h.euc2_len &= 127u;                                  /* B off: A alone */
+    mix_str(&h, 8, s);
+    ok &= !strcmp(s, "x..x..x.");
+    bad += check("LAYERS: A AND / OR / XOR / SUB B, and A alone with B off", ok);
+    h.euc2_len = 128u | 3u; h.euc2_pulses = 1; h.euc2_ro = EUC_XOR << 6;   /* B: x.. against A's 8 */
+    ok = 1;
+    for (i = 0; i < 48u; i++)
+        ok &= euclid_mix(&h, i, i) == euclid_mix(&h, i + 24u, i + 24u);     /* (the loop is lcm(8, 3) = 24) */
+    for (i = 0, n = 0; i < 24u; i++)
+        n += euclid_mix(&h, i, i) != euclid_mix(&h, i + 8u, i + 8u);
+    ok &= n > 0;
+    bad += check("  B loops on its own LEN against A's (a polymeter)", ok);
+    go_page(GR_STOCH);
+    turn(EN_K1, 1); turn(EN_K1, 1);
+    seq_next(); seq_next();
+    ok = stoch_pg() == 5u && !EUC2_ON(g);
+    turn(EN_K1, 1);                                      /* OP: AND (B gets its defaults) */
+    ok &= EUC2_ON(g) && EUC2_OP(g) == EUC_AND && EUC2_LEN(g) == 12u && g->euc2_pulses == 3u;
+    turn(EN_K1, 1); turn(EN_K1, 1); turn(EN_K1, 1);
+    ok &= EUC2_OP(g) == EUC_SUB;
+    turn(EN_K1, 5);
+    ok &= EUC2_OP(g) == EUC_SUB;
+    turn(EN_K2, 1);
+    ok &= EUC2_LEN(g) == 13u && EUC2_ON(g);
+    turn(EN_K3, 1);
+    ok &= g->euc2_pulses == 4u;
+    turn(EN_K4, 1); turn(EN_K4, 1);
+    ok &= EUC2_ROT(g) == 2u && EUC2_OP(g) == EUC_SUB;
+    for (i = 0; i < 6u; i++)
+        turn(EN_K1, -1);
+    /* OFF keeps B's numbers */
+    ok &= !EUC2_ON(g) && EUC2_LEN(g) == 13u && g->euc2_pulses == 4u;
+    bad += check("  EUCLID 2 page: OP (OFF AND OR XOR SUB), LEN, PULSES, ROT on KNOB 1..4", ok);
+    memset(&h, 0, sizeof h);
+    stoch_bound(&h);
+    ok = !EUC2_ON(&h) && !EUC2_LEN(&h);
+    h.euc2_len = 128u | 9u; h.euc2_pulses = 4; h.euc2_ro = (EUC_XOR << 6) | 5u;
+    stoch_bound(&h);
+    ok &= EUC2_ON(&h) && EUC2_LEN(&h) == 9u && EUC2_OP(&h) == EUC_XOR && EUC2_ROT(&h) == 5u;
+    h.euc2_pulses = 10;
+    stoch_bound(&h);
+    ok &= !EUC2_ON(&h) && !EUC2_LEN(&h);
+    bad += check("  SAVE: zeros are B off; a valid layer kept; an invalid one off", ok);
+    return bad;
+}
+
 int main(void)
 {
-    int bad = rhythm() + visible() + exclusive() + pages() + play() + stored();
+    int bad = rhythm() + visible() + exclusive() + pages() + play() + stored() + layers();
     printf("%s\n", bad ? "EUCLID TEST FAILED" : "euclid tests passed");
     return bad != 0;
 }

@@ -400,19 +400,30 @@ typedef struct {
     uint8_t sld;                 /* 0..100: the chance a note slides into the next */
     uint8_t stack;               /* 0..100: the chance of each extra note of a chord (up to two more) */
     uint8_t loop;                /* 0: free, a new one every pass; 1..64: the same loop of that many steps, until REROLL */
-    uint8_t rsv;
+    uint8_t euc2_ro;             /* EUCLID layer B (seq.c euclid_gen): ROT 0..63 in bits 0..5, the operator in bits 6..7 (EUC_AND..EUC_SUB); was rsv */
     uint16_t seed;               /* the loop's (REROLL draws another) */
     uint8_t w[12];               /* each pitch class's weight 0..15, C to B (a DRUM track: w[0..7] are the lanes) */
     uint8_t euc_on;              /* EUCLID mode (exclusive with `on`; seq.c euclid_gen): 1: the track plays the rhythm below */
     uint8_t euc_len;             /* 1..64: the rhythm's steps (its own loop: not the pattern's LEN) */
     uint8_t euc_pulses;          /* 0..euc_len: the hits, spread as evenly as they can be */
     uint8_t euc_rot;             /* 0..euc_len-1: the rhythm turned that many steps */
-    uint8_t pad[2];              /* (32 bytes, as the extension stores it; the EUCLID bytes were pad: zeros = defaults, OFF) */
+    uint8_t euc2_len;            /* layer B: bits 0..6 its LEN 1..64 (0: not set yet), bit 7 ON (EUCLID 2); zeros = OFF */
+    uint8_t euc2_pulses;         /* layer B: 0..LEN, the hits (32 bytes, as the extension stores it) */
 } stoch_t;
 _Static_assert(sizeof(stoch_t) == 32u, "a stochastic setting is 32 bytes (project.c extension)");
 static void euclid_defaults(stoch_t *g)
 {
     g->euc_on = 0; g->euc_len = 16; g->euc_pulses = 4; g->euc_rot = 0;
+}
+/* EUCLID 2: a second rhythm B (its own LEN, PULSES, ROT) combined with A by a boolean operator, step by step */
+enum { EUC_AND, EUC_OR, EUC_XOR, EUC_SUB };            /* SUB: A without B */
+#define EUC2_LEN(g) ((uint32_t)((g)->euc2_len & 127u))
+#define EUC2_ON(g) (((g)->euc2_len & 128u) && EUC2_LEN(g))
+#define EUC2_ROT(g) ((uint32_t)((g)->euc2_ro & 63u))
+#define EUC2_OP(g) ((uint32_t)((g)->euc2_ro >> 6))
+static void euclid2_defaults(stoch_t *g)
+{
+    g->euc2_len = 12; g->euc2_pulses = 3; g->euc2_ro = 0;
 }
 /* EUCLID: step i of the rhythm hits when the pulses, turned by ROT, fall on it (Bjorklund by the floor: E(3,8) x..x..x.) */
 static uint32_t euclid_hit(const stoch_t *g, uint32_t i)
@@ -420,12 +431,33 @@ static uint32_t euclid_hit(const stoch_t *g, uint32_t i)
     uint32_t n = g->euc_len, k = (i + n - g->euc_rot % n) % n;   /* (turned right: ROT steps later) */
     return (k * g->euc_pulses) % n < g->euc_pulses;
 }
+static uint32_t euclid_hit2(const stoch_t *g, uint32_t i)       /* rhythm B (EUC2_LEN > 0) */
+{
+    uint32_t n = EUC2_LEN(g), k = (i + n - EUC2_ROT(g) % n) % n, p = g->euc2_pulses;
+    return (k * p) % n < p;
+}
+/* the track's hit at A's step ia and B's step ib: A alone, or A (op) B with layer B on */
+static uint32_t euclid_mix(const stoch_t *g, uint32_t ia, uint32_t ib)
+{
+    uint32_t a = euclid_hit(g, ia % g->euc_len), b;
+    if (!EUC2_ON(g))
+        return a;
+    b = euclid_hit2(g, ib % EUC2_LEN(g));
+    switch (EUC2_OP(g)) {
+    case EUC_AND: return a & b;
+    case EUC_OR: return a | b;
+    case EUC_XOR: return a ^ b;
+    default: return a & !b;
+    }
+}
 static void stoch_defaults(stoch_t *g)
 {
     uint32_t i;
     uint8_t eo = g->euc_on, el = g->euc_len, ep = g->euc_pulses, er = g->euc_rot;   /* (EUCLID's are kept) */
+    uint8_t l2 = g->euc2_len, p2 = g->euc2_pulses, r2 = g->euc2_ro;
     memset(g, 0, sizeof *g);
     g->euc_on = eo; g->euc_len = el; g->euc_pulses = ep; g->euc_rot = er;
+    g->euc2_len = l2; g->euc2_pulses = p2; g->euc2_ro = r2;
     g->dens = 60; g->groove = 40; g->oct = 3; g->range = 2; g->vmin = 70; g->vmax = 110; g->seed = 1;
     for (i = 0; i < 12u; i++)
         g->w[i] = 8;
@@ -444,8 +476,10 @@ static void stoch_bound(stoch_t *g)
     }
     if (g->on)
         g->euc_on = 0;                               /* (exclusive) */
-    memset(g->pad, 0, sizeof g->pad);
-    g->rsv = 0;
+    if (EUC2_LEN(g) > 64u || g->euc2_pulses > EUC2_LEN(g) || EUC2_ROT(g) >= (EUC2_LEN(g) ? EUC2_LEN(g) : 1u))
+        g->euc2_len = g->euc2_pulses = g->euc2_ro = 0;       /* (layer B off; zeros, as older projects hold) */
+    if (!EUC2_LEN(g))
+        g->euc2_len = g->euc2_pulses = 0;
 }
 #define GEN_ON(t) ((t)->stoch.on || (t)->stoch.euc_on)   /* the track draws its steps (STOCHASTIC or EUCLID), its pattern rests */
 #define MOTION_MAX 128u          /* 1.2 (FUN10): 64 before */
@@ -549,7 +583,8 @@ typedef struct track {
     stoch_t stoch;               /* STOCHASTIC mode (above) */
     step_t stoch_step;           /* the step it generated for the one playing (seq.c seq_play; seq_ratchet reads it again) */
     uint32_t stoch_rs;           /* its loop's random state */
-    uint32_t euc_pos;            /* EUCLID: the rhythm's step now (seq.c euclid_gen; 0 at the start) */
+    uint16_t euc_pos;            /* EUCLID: the rhythm's step now (seq.c euclid_gen; 0 at the start) */
+    uint16_t euc_pos2;           /* .. and layer B's (both < 64: the pair fills the 4 bytes euc_pos had) */
     uint8_t rsv_sz[5];           /* (sizeof(track_t) a multiple of 16: below) */
     int16_t armp, aholdp;        /* P_AMODE / P_AHOLD as last seen by the ISR */
     /* engine switch (voice.c engine_block): the old engine's voices fade out, then it switches */

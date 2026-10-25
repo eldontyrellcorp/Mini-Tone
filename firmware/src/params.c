@@ -636,6 +636,7 @@ static const page_t PAGES[] = {
     {"SHAPE", FAM_SEQ, SC_STOCH, GR_STOCH, {0xFF, 0xFF, 0xFF, 0xFF}},
     {"STACK", FAM_SEQ, SC_STOCH, GR_STOCH, {0xFF, 0xFF, 0xFF, 0xFF}},
     {"EUCLID", FAM_SEQ, SC_STOCH, GR_STOCH, {0xFF, 0xFF, 0xFF, 0xFF}},   /* LEN PULSES ROT (the MODE on STOCH picks it) */
+    {"EUCLID 2", FAM_SEQ, SC_STOCH, GR_STOCH, {0xFF, 0xFF, 0xFF, 0xFF}},   /* rhythm B: OP (OFF AND OR XOR SUB) LEN PULSES ROT */
     /* HOME's pages (1.2): HOME tapped on HOME the MIXER (up to 1.1.5 GLO's; LEVEL PAN REV MUTE), again CLOCK (up to 1.1.5
      * GLO > GLOBAL; its TUNE is MENU > AUDIO's now), again HOME (ui.c home_tap) */
     {"MIXER", FAM_TRK, SC_TRK, GR_TRK, {0, 1, 2, 3}},

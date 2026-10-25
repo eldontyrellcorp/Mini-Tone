@@ -1146,6 +1146,16 @@ static void draw_columns(void)
             fmt_int(a[0], g->euc_len); str_cpy(u[0], "STEPS", 8); ra[0] = g->euc_len * 1000 / 64;
             fmt_int(a[1], g->euc_pulses); ra[1] = g->euc_len ? g->euc_pulses * 1000 / g->euc_len : 0;
             fmt_int(a[2], g->euc_rot); ra[2] = g->euc_len ? g->euc_rot * 1000 / g->euc_len : 0;
+        } else if (pg == 5u) {
+            static const char *const OPN[5] = {"OFF", "AND", "OR", "XOR", "SUB"};
+            lab[0] = "OP"; lab[1] = "LEN B"; lab[2] = "PULSES B"; lab[3] = "ROT B";
+            str_cpy(a[0], OPN[EUC2_ON(g) ? 1u + EUC2_OP(g) : 0u], 12);
+            if (EUC2_LEN(g)) {
+                uint32_t l2 = EUC2_LEN(g);
+                fmt_int(a[1], (int32_t)l2); str_cpy(u[1], "STEPS", 8); ra[1] = (int32_t)l2 * 1000 / 64;
+                fmt_int(a[2], g->euc2_pulses); ra[2] = (int32_t)(g->euc2_pulses * 1000u / l2);
+                fmt_int(a[3], (int32_t)EUC2_ROT(g)); ra[3] = (int32_t)(EUC2_ROT(g) * 1000u / l2);
+            }
         } else {
             lab[0] = "STACK"; lab[1] = "SEED";
             fmt_int(a[0], g->stack); str_cpy(u[0], "%", 8); ra[0] = g->stack * 10;

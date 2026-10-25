@@ -285,6 +285,39 @@ static void graph_stoch(const track_t *t, uint16_t c)
         if (drum)
             lit = st->hit;
     }
+    if (stoch_pg() == 5u) {                            /* EUCLID 2: A, B and the result A (op) B, over the longer of the two */
+        static const char *const OPN[4] = {"A AND B", "A OR B", "A XOR B", "A - B"};
+        uint32_t la = g->euc_len ? g->euc_len : 16u, lb = EUC2_LEN(g), n = lb > la ? lb : la, i, row;
+        int32_t cw = 208 / (int32_t)n, r = cw > 3 ? cw - 1 : cw, xs = 18 + (208 - cw * (int32_t)n) / 2;
+        uint32_t ca = (t->euc_pos + la - 1u) % la, cb = lb ? (t->euc_pos2 + lb - 1u) % lb : 0u;
+        static const char *const RL[3] = {"A", "B", "="};
+        str_cpy(b, EUC2_ON(g) ? OPN[EUC2_OP(g)] : "B OFF", 16);
+        cv_text_on(6, 0, &AF_S, b, g->euc_on && EUC2_ON(g) ? T_ACCENT : T_DIM, T_SURF);
+        for (row = 0; row < 3u; row++) {
+            int32_t y = 22 + (int32_t)row * 32;
+            cv_text_on(6, y + 6, &AF_S, RL[row], row == 2u ? T_TEXT : T_MID, T_SURF);
+            if (row == 1u && !lb)
+                continue;
+            for (i = 0; i < n; i++) {
+                int32_t x = xs + (int32_t)i * cw;
+                uint32_t hit, now;
+                if (row == 0u) {
+                    hit = g->euc_pulses && euclid_hit(g, i % la);
+                    now = i % la == ca;
+                } else if (row == 1u) {
+                    hit = euclid_hit2(g, i % lb);
+                    now = i % lb == cb;
+                } else {
+                    hit = euclid_mix(g, i, i);
+                    now = i % la == ca && (!lb || i % lb == cb);
+                }
+                cv_rect(x, y, r, 22, hit ? (g->euc_on ? c : T_MID) : T_RAISE);
+                if (now && song.playing && g->euc_on)
+                    cv_frame(x - 1, y - 2, r + 2, 26, T_TEXT);
+            }
+        }
+        return;
+    }
     if (stoch_pg() == 4u) {                            /* EUCLID: the rhythm as a row of steps, the hits filled, the one playing lit */
         uint32_t n = g->euc_len ? g->euc_len : 16u, row = n > 32u ? 2u : 1u, per = (n + row - 1u) / row, i;
         int32_t cw = 212 / (int32_t)per, r;
@@ -1302,7 +1335,7 @@ static uint32_t graph_signature(void)
     if (pg->graph == GR_STOCH) {                     /* its settings, the pick, the step drawn now */
         h = fnv(h, &t->stoch, sizeof t->stoch);
         h = fnv(h, &t->stoch_step, sizeof t->stoch_step);
-        h ^= (ui.stoch_k + 1u) * 40009u + song.playing * 7u + t->euc_pos * 131u;
+        h ^= (ui.stoch_k + 1u) * 40009u + song.playing * 7u + t->euc_pos * 131u + t->euc_pos2 * 7u;
     }
     if (pg->graph == GR_REVX)                        /* the ELEK reverb's values */
         for (i = 0; i < RV_N; i++)
@@ -2324,6 +2357,52 @@ static void graph_song(void)
                      i < 4u ? "[K3] ADD SECTION" : "[SAVE] PROJECT A-D", T_MID, T_SURF, x0 - 10 - SG_X0);
     }
 }
+#if FELUCCA_DUAL
+/* DUALVCO, the page with CNFG: what the picked configuration means (eng_dual.c N_DUAL_CNFG): the waves, how the two
+ * oscillators work together, the phase. Drawn in place of the scope. */
+static int dual_cnfg_page(const track_t *t)
+{
+    const page_t *pg = cur_page();
+    uint32_t c;
+    if (pg->scope != SC_ENGINE || ENGINES[t->eng_req % NENGINES] != &ENG_DUAL)
+        return 0;
+    for (c = 0; c < 4u; c++) {
+        int16_t *vp;
+        if (page_desc(pg, c, &vp) && vp == &t->p[P_E4])
+            return 1;
+    }
+    return 0;
+}
+static void graph_dual_cnfg(const track_t *t, uint16_t col)
+{
+    static const char *const W1[2] = {"SINE", "SINE/SAW"};
+    static const char *const W2[5] = {"SINE", "BENT SINE", "TRIANGLE", "SINE/SAW", "SAW"};
+    static const char *const MODE[4] = {"+", "x", "FM", "FM x"};
+    static const char *const WHAT[4] = {"OSC 1 AND OSC 2 MIXED", "RING: OSC 1 x OSC 2", "FM: OSC 2 MODULATES OSC 1",
+                                        "FM, THEN RING MODULATED BY OSC 2"};
+    uint32_t cf = (uint32_t)t->p[P_E4] % 80u, mode = (cf % 40u) / 10u, i = 0, j;
+    char a[40];
+    const char *const part[5] = {W1[(cf % 10u) / 5u], " ", MODE[mode], " ", W2[cf % 5u]};
+    for (j = 0; j < 5u; j++) {
+        const char *s = part[j];
+        while (*s && i < sizeof a - 1u)
+            a[i++] = *s++;
+    }
+    a[i] = 0;
+    cv_oy = 0;
+    {   /* the scope, shorter, over the hint */
+        uint32_t h = cv_h;
+        cv_h = 70;
+        graph_scope(col);
+        cv_h = h;
+    }
+    GFX_HOOK_ALIGN(0, 0, 240, 0, AL_H, "panel note centred");
+    cv_text_in(0, 72, 240, text_w(&AF_M, a) > 224 ? &AF_S : &AF_M, a, T_TEXT, T_SURF);
+    note_line(92, WHAT[mode], T_MID);
+    note_line(106, cf >= 40u ? "PHASES RESTART AT EACH NOTE" : "PHASES RUN ON", T_DIM);
+}
+#endif
+
 static void draw_graph(void)
 {
     const page_t *pg = cur_page();
@@ -2451,6 +2530,9 @@ static void draw_graph(void)
 #if FELUCCA_FM4
             else if ((pg->scope == SC_ENGINE || pg->id[0] == P_FM1_LEVEL) && t->eng_req % NENGINES == ENGI_DIGITAL)
                 graph_fm(t, c);                      /* (OP LEVEL too: the levels on the chart) */
+#endif
+#if FELUCCA_DUAL
+            else if (dual_cnfg_page(t)) graph_dual_cnfg(t, c);
 #endif
             else { cv_oy = 0; graph_scope(c); }
             break;

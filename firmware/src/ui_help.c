@@ -59,6 +59,7 @@ static const struct { const char *title, *hint; } HELP_PAGE[] = {
     {"SHAPE", "[K1]VEL MIN[OCT+]REROLL"},
     {"STACK", "[K1]STACK[K2]SEED[OCT+]REROLL"},
     {"EUCLID", "[K1]LEN[K2]PULSES[K3]ROT"},
+    {"EUCLID 2", "[K1]OP[K2]LEN[K3]PULSES"},
     {"MIXER", "[K4]MUTE[ALGO]TRACK[HOME]CLOCK"},
     {"CLOCK", "[SELECT]TEMPO[GLO]HOLD: TAP"},
 };

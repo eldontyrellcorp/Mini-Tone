@@ -404,7 +404,7 @@ static int page_visible(uint32_t i)
                 first = k;
                 break;
             }
-        return i == first || (i == first + 4u ? TSEL->stoch.euc_on : TSEL->stoch.on);
+        return i == first || (i == first + 4u || i == first + 5u ? TSEL->stoch.euc_on : TSEL->stoch.on);
     }
     return page_for_engine(i, TSEL->eng_req % NENGINES);   /* (params.c: the engine's pages) */
 }
@@ -639,7 +639,7 @@ static void note_del(track_t *t, uint32_t i, uint32_t k)   /* one note of a chor
     motion_clear_locks(t, i);
 }
 
-static uint32_t stoch_pg(void)                          /* 0..4: STOCH NOTES SHAPE STACK EUCLID */
+static uint32_t stoch_pg(void)                          /* 0..5: STOCH NOTES SHAPE STACK EUCLID EUCLID 2 */
 {
     uint32_t i, first = 0;
     for (i = 0; i < NPAGES; i++)

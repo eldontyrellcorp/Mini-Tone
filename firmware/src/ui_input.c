@@ -1118,8 +1118,32 @@ static void stoch_edit(uint32_t slot, int32_t steps)
     stoch_t *g = stoch_of(TSEL);
     uint32_t pg = stoch_pg();
     int32_t d = accel(EN_K1 + slot, steps, 100);
-    if (pg > 4u)
+    if (pg > 5u)
         return;
+    if (pg == 5u) {                                     /* EUCLID 2: OP (OFF AND OR XOR SUB) LEN PULSES ROT of rhythm B */
+        uint32_t len = EUC2_LEN(g), on = EUC2_ON(g), rot = EUC2_ROT(g), op = EUC2_OP(g);
+        int32_t dd = steps > 0 ? 1 : -1;
+        if (slot == 0u) {
+            int32_t m = (on ? 1 + (int32_t)op : 0) + dd;
+            m = clamp(m, 0, 4);
+            if (m && !len)
+                euclid2_defaults(g), len = EUC2_LEN(g), rot = EUC2_ROT(g);
+            g->euc2_len = (uint8_t)(len | (m ? 128u : 0u));
+            g->euc2_ro = (uint8_t)(rot | (uint32_t)(m ? m - 1 : (int32_t)op) << 6);
+        } else if (len) {
+            if (slot == 1u)
+                len = (uint32_t)clamp((int32_t)len + accel(EN_K1 + slot, steps, 64), 1, 64);
+            else if (slot == 2u)
+                g->euc2_pulses = (uint8_t)clamp((int32_t)g->euc2_pulses + dd, 0, (int32_t)len);
+            else
+                rot = (uint32_t)clamp((int32_t)rot + dd, 0, (int32_t)len - 1);
+            g->euc2_pulses = g->euc2_pulses > len ? (uint8_t)len : g->euc2_pulses;
+            rot = rot >= len ? len - 1u : rot;
+            g->euc2_len = (uint8_t)(len | (g->euc2_len & 128u));
+            g->euc2_ro = (uint8_t)(rot | (g->euc2_ro & 192u));
+        }
+        return;
+    }
     if (pg == 4u) {                                     /* EUCLID: LEN PULSES ROT (kept in order: PULSES <= LEN, ROT < LEN) */
         if (slot == 0u)
             g->euc_len = (uint8_t)clamp((int32_t)g->euc_len + accel(EN_K1 + slot, steps, 64), 1, 64);

@@ -822,7 +822,7 @@ static void seq_start(void)
     for (i = 0; i < NTRK; i++) {                   /* every track from its step 0, together */
         track_t *t = &trk[i];
         t->seq_idx = (uint16_t)(t->p[P_SLEN] - 1);
-        t->euc_pos = 0;
+        t->euc_pos = t->euc_pos2 = 0;
         t->seq_pos = 0x7FFFFFFF;                   /* step 0 fires on the first block */
         t->rskip_n = 0;
         t->rh_n = 0;
@@ -1008,8 +1008,10 @@ static __attribute__((noinline)) void euclid_gen(track_t *t, uint32_t idx)
     step_t *s = &t->stoch_step;
     uint32_t len = t->p[P_SLEN] > 0 ? (uint32_t)t->p[P_SLEN] : 1u, i, hit;
     (void)idx;
-    hit = euclid_hit(g, t->euc_pos % g->euc_len);
+    hit = euclid_mix(g, t->euc_pos, t->euc_pos2);
     t->euc_pos = (t->euc_pos + 1u) % g->euc_len;
+    if (EUC2_LEN(g))
+        t->euc_pos2 = (t->euc_pos2 + 1u) % EUC2_LEN(g);
     memset(s, 0, sizeof *s);
     s->time = ST_REST;
     if (!hit)

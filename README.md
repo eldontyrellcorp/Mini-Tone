@@ -3,6 +3,23 @@
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-blue.svg)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/Sponsor-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/hugelton)
 
+## Mini-Tone 1.0.4
+
+What changed since 1.0.3:
+
+- **EUCLID 2, a second page for the EUCLID mode** (after the Digitone 2's): a second rhythm B with its own LEN, PULSES and ROT, combined
+  with A step by step by a boolean operator. OP (KNOB 1) is OFF, AND (both hit), OR (either), XOR (one of them) or SUB (A without B). B loops
+  on its own length against A's, so the pair repeats after lcm(LEN A, LEN B) steps. The page draws A, B and the result, the step playing outlined
+  (OFF keeps B's numbers). It shows with EUCLID on, after the EUCLID page. B is saved with the project in bytes of the stochastic settings that were
+  unused, so the project format and its size do not change and projects saved before load with B off
+- **DUALVCO's CNFG explained on screen**: the MIX page keeps the scope, shorter, and under it says what the picked configuration is, for
+  example `*S+T` reads "SINE + TRIANGLE / OSC 1 AND OSC 2 MIXED / PHASES RESTART AT EACH NOTE" and `ZFMZ` "SINE/SAW FM SINE/SAW / FM: OSC 2
+  MODULATES OSC 1 / PHASES RUN ON". The letters are the waves (S sine, K bent sine, T triangle, Z sine/saw, A saw), then the mode (`+` mix,
+  `R` ring, `FM`, `F+R` FM then ring modulated by oscillator 2), and a `*` first means the phases restart at each note. The text is built
+  from the CNFG number, so it costs next to no flash
+- Tests: `tests/euclid_test.c` covers the four operators, the polymeter, the EUCLID 2 knobs and the saved bytes; the suite still fails only on
+  the one BRAIDS hash that depends on the host's libm
+
 ## Mini-Tone 1.0.3
 
 What changed since 1.0.2:
@@ -181,6 +198,9 @@ it changes:
   - **EUCLID:** LEN (KNOB 1, 1..64 steps: the rhythm's own loop, restarted when the song starts), PULSES (KNOB 2, 0..LEN: the hits, spread
     as evenly as they can be), ROT (KNOB 3, 0..LEN-1: the rhythm turned that many steps later). The row of steps shows the hits and
     the step playing
+  - **EUCLID 2:** a second rhythm B with its own LEN, PULSES and ROT, combined with A step by step: OP (KNOB 1) is OFF, AND (both hit), OR (either),
+    XOR (one of them) or SUB (A without B). B loops on its own length against A's, so the pair repeats after lcm(LEN A, LEN B) steps. The page shows A, B and the result
+    (OFF keeps B's numbers; projects saved before load with B off)
   - On a STOCH page **OCT+ tapped is REROLL** (another SEED; with LOOP FREE every pass is new anyway) and **OCT+ held (0.4 s) is LOCK**: the
     LEN steps it would draw are written into the pattern, MODE goes OFF, and you edit them as any pattern (one undo, SAVE held)
   - Settings are saved with the project (in its extension; projects saved before load with the mode OFF), not in user presets
