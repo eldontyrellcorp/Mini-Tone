@@ -175,6 +175,16 @@ int main(void)
     b = rms(outl, 20000, 60000);
     printf("elek: noise level: HALL %.0f, ELEK %.0f (%.1f dB)\n", a, b, 20 * log10(b / a));
     check("the level is within 4 dB of HALL's at the defaults", fabs(20 * log10(b / a)) < 4.0);
+    /* 9. the tail ends in silence (rounding in the loops once left a limit cycle of a few LSB, a noise floor after the reverb had finished) */
+    {
+        uint32_t d;
+        double w = 0;
+        for (d = 90; d <= 112; d += 11) {
+            elek_reset(); rvx_p[RV_DEC] = (int16_t)d; run(0, 1, TOT / 4); run(0, 0, TOT);
+            w += rms(outl, TOT - 22050, TOT);
+        }
+        check("the tail ends in silence: the last second of a 3 s run after noise, DEC 90 / 101 / 112, is exactly zero", w == 0);
+    }
     /* 8. bounded at INF with loud noise; determinism */
     elek_reset(); rvx_p[RV_DEC] = 127; run(0, 1, TOT);
     {

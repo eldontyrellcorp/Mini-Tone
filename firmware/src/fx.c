@@ -557,6 +557,15 @@ static inline int32_t ek_coef(uint32_t hz)                /* a one-pole's coeffi
     return (int32_t)(c > 30000u ? 30000u : c);
 }
 static inline int32_t ek_r(int32_t a, int32_t b) { return (a * b + 16384) >> 15; }   /* rounded: no drift in the loops */
+/* the loops' gains: rounded as ek_r while the signal is large, towards zero below EK_DEAD (about -96 dB of full scale: no bias, and never
+ * more than the exact product). In a loop whose gain is below 1 the small values then only fall, so the tail ends in silence where rounding alone
+ * left a limit cycle (a few LSB circulating for ever, heard as noise after the reverb had finished); above it the reverb time stays exact */
+#define EK_DEAD 4
+static inline int32_t ek_z(int32_t a, int32_t b)
+{
+    int32_t p = a * b;
+    return (a < EK_DEAD && a > -EK_DEAD) ? p / 32768 : (p + 16384) >> 15;
+}
 /* a one-pole step towards x with the remainder kept (c at most 30000: the product fits): the state ends exactly on a
  * constant input, so a quiet loop holds no offset that the reverb would then keep */
 static inline int32_t ek_lp(int32_t *st, int32_t *rem, int32_t x, int32_t c)
@@ -573,7 +582,7 @@ static __attribute__((noinline)) void rev_elek(const int32_t *rev_in, int32_t *o
     uint32_t i, k, prs = (uint32_t)rvx_p[RV_PRE] * 22u;
     int32_t hpc = ek_coef(CUTOFF_HZ[rvx_p[RV_HPF] & 127]), lpc = ek_coef(CUTOFF_HZ[rvx_p[RV_LPF] & 127]);
     int32_t shc = ek_coef(CUTOFF_HZ[rvx_p[RV_FRQ] & 127]), shg = rvx_p[RV_GAIN] * 258, vol = rvx_p[RV_VOL] * 258;
-    int32_t xp = ek.x, mp = ek.m, sp = ek.s;
+    int32_t xp = ek.x, mp = ek.m, sp = ek.s, inf = rvx_p[RV_DEC] >= 127;
     (void)n;
     if (prs > EK_PRE_N - 2u)
         prs = EK_PRE_N - 2u;
@@ -593,17 +602,17 @@ static __attribute__((noinline)) void rev_elek(const int32_t *rev_in, int32_t *o
         x = pre[rd];
         ek.pi = (uint16_t)(ek.pi + 1u == EK_PRE_N ? 0u : ek.pi + 1u);
         for (k = 0; k < 2u; k++) {                        /* the diffusers: allpass, g 0.6 */
-            int32_t dd = ap[ek.d[k]], v = x - ek_r(dd, 19661);
+            int32_t dd = ap[ek.d[k]], v = x - ek_z(dd, 19661);
             ap[ek.d[k]] = (int16_t)clamp(v, -32768, 32767);
-            x = dd + ek_r(v, 19661);
+            x = dd + ek_z(v, 19661);
             ek.d[k] = (uint16_t)(ek.d[k] + 1u == EK_AP[k] ? 0u : ek.d[k] + 1u);
             ap += EK_AP[k];
         }
         for (k = 0; k < EK_NL; k++) {                     /* the lines' ends, the shelf in each loop (GAIN above FRQ) */
             int32_t raw = ln[ek.i[k]], lo = ek_lp(&ek.sh[k], &ek.she[k], raw, shc), v;
-            v = lo + ek_r(raw - lo, shg);                   /* the low band, and the high one scaled by GAIN */
+            v = lo + ek_z(raw - lo, shg);                   /* the low band, and the high one scaled by GAIN */
             y[k] = v;
-            f[k] = ek_r(v, ek.g[k]);
+            f[k] = inf ? ek_r(v, ek.g[k]) : ek_z(v, ek.g[k]);   /* (INF: rounded, it holds) */
             q = k;
             ln += EK_LEN[q];
         }
