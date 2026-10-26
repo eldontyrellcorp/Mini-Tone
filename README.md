@@ -3,6 +3,16 @@
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-blue.svg)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/Sponsor-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/hugelton)
 
+## Mini-Tone 1.0.5
+
+What changed since 1.0.4:
+
+- **The ELEK reverb no longer leaves a noise floor.** After a note's reverb had died away, ELEK kept a faint steady noise that HALL, ROOM and
+  SPRING do not have. The cause was rounding in the reverb's feedback loops: a few LSB circulated for ever (a limit cycle, about -84 dB).
+  Below a tiny amplitude (4 LSB, about -96 dB) the loops now round toward zero, so the tail ends in true silence; above it nothing changes and
+  the reverb time stays as set. DEC INF still never decays on its own. `tests/elek_rev_test.c` checks that the last second after a noise burst
+  is exactly zero
+
 ## Mini-Tone 1.0.4
 
 What changed since 1.0.3:
